@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+    <title>テニス乱数表 マルチ</title>
+    <style>
+        :root { --primary:#2bc44a; --secondary:#1a73e8; --warning:#e67e22; --danger:#e74c3c; }
+        * { box-sizing:border-box; margin:0; padding:0; font-family:-apple-system,sans-serif; }
+        body { background:#f4f6f8; color:#333; padding:15px; padding-bottom:70px; }
+        .card { background:white; border-radius:12px; padding:15px; margin-bottom:15px; box-shadow:0 2px 8px rgba(0,0,0,0.05); }
+        .title { font-size:14px; font-weight:bold; color:#888; border-bottom:1px solid #eee; padding-bottom:4px; margin-bottom:10px; }
+        .btn-circle { width:45px; height:45px; border-radius:50%; border:none; background:#e0e0e0; font-size:20px; font-weight:bold; }
+        .btn-arrival { background:var(--secondary); color:white; border:none; padding:8px 12px; border-radius:8px; font-weight:bold; font-size:13px; }
+        .member-row { display:flex; justify-content:space-between; align-items:center; padding:8px 10px; background:#f8f9fa; border-radius:8px; margin-bottom:5px; font-size:14px; }
+        .badge { background:rgba(231,76,60,0.1); color:var(--danger); font-size:11px; font-weight:bold; padding:2px 6px; border-radius:4px; }
+        .court-box { border-left:6px solid var(--primary); padding-left:10px; margin-bottom:15px; display:flex; justify-content:space-between; align-items:center; }
+        .team-text { font-size:16px; font-weight:bold; }
+        .btn-finish { background:var(--primary); color:white; border:none; padding:10px 14px; border-radius:8px; font-weight:bold; font-size:13px; }
+        .footer { position:fixed; bottom:0; left:0; right:0; background:white; padding:10px 15px; box-shadow:0 -2px 10px rgba(0,0,0,0.05); }
+        .btn-undo { width:100%; background:var(--warning); color:white; border:none; padding:10px; border-radius:8px; font-size:15px; font-weight:bold; }
+    </style>
+</head>
+<body>
+    <div style="text-align:center; margin-bottom:15px;"><h2>🎾 テニス乱数表 マルチ</h2></div>
+    <div id="app">
+        <!-- 【画面1】初期設定画面 -->
+        <div id="v-setup" class="card" style="padding:30px 15px;">
+            <h3 style="text-align:center; margin-bottom:20px;">今日のコート数と人数を設定</h3>
+            <div style="margin-bottom:25px; text-align:center;">
+                <p style="font-size:14px; color:#888; margin-bottom:10px;">使用するコート数</p>
+                <div style="display:flex; justify-content:center; align-items:center; gap:20px;">
+                    <button class="btn-circle" onclick="addCt(-1)">−</button>
+                    <span id="txt-ct" style="font-size:36px; font-weight:bold; color:var(--primary);">1</span><span style="font-size:16px; font-weight:bold;">面</span>
+                    <button class="btn-circle" onclick="addCt(1)">+</button>
+                </div>
+            </div>
+            <div style="margin-bottom:30px; text-align:center;">
+                <p style="font-size:14px; color:#888; margin-bottom:10px;">最初の参加人数</p>
+                <div style="display:flex; justify-content:center; align-items:center; gap:20px;">
+                    <button class="btn-circle" onclick="addMem(-1)">−</button>
+                    <span id="txt-init" style="font-size:36px; font-weight:bold; color:var(--secondary);">6</span><span style="font-size:16px; font-weight:bold;">人</span>
+                    <button class="btn-circle" onclick="addMem(1)">+</button>
+                </div>
+            </div>
+            <button style="width:100%; background:var(--primary); color:white; border:none; padding:14px; border-radius:10px; font-size:18px; font-weight:bold;" onclick="startApp()">この設定でアプリを起動</button>
+        </div>
+
+        <!-- 【画面2】メイン画面 -->
+        <div id="v-main" style="display:none;">
+            <!-- メンバー追加 -->
+            <div class="card" style="display:flex; justify-content:space-between; align-items:center; padding:10px 15px;">
+                <div><h4 id="txt-stay" style="font-size:16px;">滞在人数: 0人</h4></div>
+                <button class="btn-arrival" onclick="onArrival()">👤 <span id="txt-next">7</span>番到着</button>
+            </div>
+            <!-- 各コートの状況表示 -->
+            <div class="card"><div class="title">進行中のコート（空いたコートを終了させてください）</div><div id="l-courts"></div></div>
+            <!-- 現在のお休みメンバー -->
+            <div class="card" style="background:#fffcf0;"><div class="title" style="color:var(--warning);">⏳ 現在お休み中のメンバー（ベンチ）</div><div id="txt-rest" style="font-size:16px; font-weight:bold; color:var(--warning); padding:4px 0;"></div></div>
+            <!-- メンバー一覧 -->
+            <div class="card"><div class="title">メンバー一覧（プレイ回数・早退）</div><div id="l-member"></div></div>
+            <!-- 過去履歴 -->
+            <div id="c-hist" class="card" style="display:none;"><div class="title">過去の対戦履歴</div><div id="l-hist" style="max-height:150px; overflow-y:auto; display:flex; flex-direction:column; gap:6px;"></div></div>
+            <!-- 固定フッター -->
+            <div class="footer"><button id="btn-undo" class="btn-undo" style="display:none;" onclick="undoAction()">↩️ 1手前に戻す（誤操作リセット）</button></div>
+        </div>
+    </div>
+    <script>
+        var maxCourts = 1, initCount = 6, currentMembers = [], nextNum = 1, totalMatches = 0;
+        var courtStates = {}, playCounts = {}, pastMatches = [], pairHistory = [], stateHistory = [];
+        var newlyArrived = new Set(), lastPlayedPlayers = new Set();
+
+        function saveState() {
+            stateHistory.push({
+                currentMembers: currentMembers.slice(), nextNum: nextNum, totalMatches: totalMatches,
+                courtStates: JSON.parse(JSON.stringify(courtStates)), playCounts: Object.assign({}, playCounts),
+                pastMatches: JSON.parse(JSON.stringify(pastMatches)), pairHistory: JSON.parse(JSON.stringify(pairHistory)),
+                newlyArrived: new Set(newlyArrived), lastPlayedPlayers: new Set(lastPlayedPlayers)
+            });
+            if (stateHistory.length > 5) { stateHistory.shift(); }
+        }
+
+        function undoAction() {
+            if (stateHistory.length === 0) return; var p = stateHistory.pop();
+            currentMembers = p.currentMembers; nextNum = p.nextNum; totalMatches = p.totalMatches;
+            courtStates = p.courtStates; playCounts = p.playCounts; pastMatches = p.pastMatches;
+            pairHistory = p.pairHistory; newlyArrived = p.newlyArrived; lastPlayedPlayers = p.lastPlayedPlayers;
+            updateUI();
+        }
+
+        function addCt(amt) { var n = maxCourts + amt; if (n >= 1 && n <= 4) { maxCourts = n; document.getElementById('txt-ct').innerText = maxCourts; } }
+        function addMem(amt) { var n = initCount + amt; if (n >= 4 && n <= 40) { initCount = n; document.getElementById('txt-init').innerText = initCount; } }
+
+        function startApp() {
+            currentMembers = [];
+            for (var i = 1; i <= initCount; i++) { currentMembers.push(i); playCounts[i] = 0; }
+            nextNum = initCount + 1;
+            courtStates = {};
+            for (var c = 1; c <= maxCourts; c++) { courtStates[c] = null; }
+            document.getElementById('v-setup').style.display = 'none';
+            document.getElementById('v-main').style.display = 'block';
+            stateHistory = [];
+            for (var c = 1; c <= maxCourts; c++) {
+                if (getAvailablePlayersForCourt().length >= 4) { assignNextMatch(c, true); }
+            }
+            updateUI();
+        }
+
+        function onArrival() {
+            saveState();
+            var counts = [];
+            for (var i = 0; i < currentMembers.length; i++) { counts.push(playCounts[currentMembers[i]] || 0); }
+            playCounts[nextNum] = currentMembers.length > 0 ? Math.min.apply(null, counts) : 0;
+            currentMembers.push(nextNum);
+            newlyArrived.add(nextNum);
+            nextNum += 1;
+            for (var c = 1; c <= maxCourts; c++) {
+                if (!courtStates[c] && getAvailablePlayersForCourt().length >= 4) { assignNextMatch(c, false); break; }
+            }
+            updateUI();
+        }
+
+        function onLeave(id) {
+            saveState();
+            newlyArrived.delete(id);
+            lastPlayedPlayers.delete(id);
+            currentMembers = currentMembers.filter(function(m) { return m !== id; });
+            for (var c = 1; c <= maxCourts; c++) {
+                var match = courtStates[c];
+                if (match && (match.p1 === id || match.p2 === id || match.p3 === id || match.p4 === id)) { courtStates[c] = null; }
+            }
+            updateUI();
+        }
+
+        function getAvailablePlayersForCourt() {
+            var activeActive = [];
+            for (var c = 1; c <= maxCourts; c++) {
+                var m = courtStates[c];
+                if (m) { activeActive.push(m.p1, m.p2, m.p3, m.p4); }
+            }
+            return currentMembers.filter(function(m) { return activeActive.indexOf(m) === -1; });
+        }
+
+        function getPairCount(p1, p2) {
+            var count = 0;
+            for (var i = 0; i < pairHistory.length; i++) {
+                var h = pairHistory[i]; var h1 = h.concat().shift(); var h2 = h.concat().pop();
+                if ((h1 === p1 && h2 === p2) || (h1 === p2 && h2 === p1)) { count++; }
+            }
+            return count;
+        }
+        // 🧠 指定されたコート番号に、次の超平等な4人を割り振る中心ロジック
+        function assignNextMatch(courtNum, isFirstGlobalMatch) {
+            var available = getAvailablePlayersForCourt();
+            if (available.length < 4) return;
+            
+            totalMatches += 1;
+            var finalMatch = null;
+
+            // アプリ起動直後の、本当の「第1試合（通算1回目）」だけは完全に1〜4番で固定
+            if (isFirstGlobalMatch && totalMatches === 1) {
+                finalMatch = { matchNumber: 1, p1: 1, p2: 2, p3: 3, p4: 4, courtNumber: courtNum };
+                newlyArrived.delete(1); newlyArrived.delete(2); newlyArrived.delete(3); newlyArrived.delete(4);
+            } else {
+                // 💡 【複数面対応・超平等コントロール】
+                // 待機中の人たちを、直前の試合状況や通算試合数をもとに安全に並び替える
+                var candidates = secureShuffle(available).sort(function(a, b) {
+                    var isANew = newlyArrived.has(a) ? 1 : 0;
+                    var isBNew = newlyArrived.has(b) ? 1 : 0;
+                    if (isANew !== isBNew) { return isBNew - isANew; } // 1.遅参者を最優先
+                    
+                    var wasAPlaying = lastPlayedPlayers.has(a) ? 1 : 0;
+                    var wasBPlaying = lastPlayedPlayers.has(b) ? 1 : 0;
+                    if (wasAPlaying !== wasBPlaying) { return wasAPlaying - wasBPlaying; } // 2.お休み上がり（直前プレイしていない人）を最優先
+                    
+                    return (playCounts[a] || 0) - (playCounts[b] || 0); // 3.通算試合数が少ない順
+                });
+
+                var selected = [];
+                while (selected.length < 4 && candidates.length > 0) { selected.push(candidates.shift()); }
+                selected.forEach(function(m) { newlyArrived.delete(m); });
+
+                var cp1 = selected.concat().shift() || 0;
+                var cp2 = selected.concat().slice(1, 2).shift() || 0;
+                var cp3 = selected.concat().slice(2, 3).shift() || 0;
+                var cp4 = selected.concat().slice(3, 4).shift() || 0;
+                
+                var patterns = [
+                    { p1: cp1, p2: cp2, p3: cp3, p4: cp4, score: getPairCount(cp1, cp2) + getPairCount(cp3, cp4) },
+                    { p1: cp1, p2: cp3, p3: cp2, p4: cp4, score: getPairCount(cp1, cp3) + getPairCount(cp2, cp4) },
+                    { p1: cp1, p2: cp4, p3: cp2, p4: cp3, score: getPairCount(cp1, cp4) + getPairCount(cp2, cp3) }
+                ];
+                patterns.sort(function(a, b) { return a.score - b.score; });
+                var bestMatch = patterns.shift();
+                
+                finalMatch = { matchNumber: totalMatches, p1: bestMatch.p1, p2: bestMatch.p2, p3: bestMatch.p3, p4: bestMatch.p4, courtNumber: courtNum };
+            }
+
+            courtStates[courtNum] = finalMatch;
+            pastMatches.push(finalMatch);
+
+            playCounts[finalMatch.p1] = (playCounts[finalMatch.p1] || 0) + 1;
+            playCounts[finalMatch.p2] = (playCounts[finalMatch.p2] || 0) + 1;
+            playCounts[finalMatch.p3] = (playCounts[finalMatch.p3] || 0) + 1;
+            playCounts[finalMatch.p4] = (playCounts[finalMatch.p4] || 0) + 1;
+
+            pairHistory.push([finalMatch.p1, finalMatch.p2]);
+            pairHistory.push([finalMatch.p3, finalMatch.p4]);
+        }
+
+        // コートの試合終了ボタンが押されたときの処理
+        function finishCourt(courtNum) {
+            var match = courtStates[courtNum];
+            if (!match) return;
+            saveState();
+
+            // 💡 3連投を防ぐため、今このコートを終わった4人を「直前にプレイした人リスト」に新しく登録
+            lastPlayedPlayers.clear();
+            lastPlayedPlayers.add(match.p1); lastPlayedPlayers.add(match.p2);
+            lastPlayedPlayers.add(match.p3); lastPlayedPlayers.add(match.p4);
+
+            courtStates[courtNum] = null; // コートを一度空にする
+            
+            // すぐに、残った待機メンバーの中から次の4人をこのコートへ自動選出
+            if (getAvailablePlayersForCourt().length >= 4) { assignNextMatch(courtNum, false); }
+            updateUI();
+        }
+
+        function updateUI() {
+            document.getElementById('txt-stay').innerText = "滞在人数: " + currentMembers.length + "人";
+            document.getElementById('txt-next').innerText = nextNum;
+            
+            var undoBtn = document.getElementById('btn-undo');
+            if (undoBtn) { undoBtn.style.display = stateHistory.length > 0 ? 'block' : 'none'; }
+
+            // ① 進行中の各コートの表示を更新
+            var courtsContainer = document.getElementById('l-courts');
+            courtsContainer.innerHTML = '';
+            for (var c = 1; c <= maxCourts; c++) {
+                var box = document.createElement('div');
+                box.className = 'card';
+                box.style = 'border-left:6px solid var(--primary); padding:10px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;';
+                
+                var m = courtStates[c];
+                if (m) {
+                    box.innerHTML = '<div><div style="font-size:12px; font-weight:bold; color:var(--primary); margin-bottom:4px;">第 ' + c + ' コート (第 ' + m.matchNumber + ' 試合)</div><div class="team-text">' + m.p1 + '番 & ' + m.p2 + '番 <span style="font-size:12px; color:#888; font-weight:normal;">vs</span> ' + m.p3 + '番 & ' + m.p4 + '番</div></div><button class="btn-finish" onclick="finishCourt(' + c + ')">試合終了</button>';
+                } else {
+                    box.innerHTML = '<div><div style="font-size:12px; font-weight:bold; color:#aaa; margin-bottom:4px;">第 ' + c + ' コート</div><div style="color:#aaa; font-style:italic;">待機中（コートが空いています）</div></div><button class="btn-finish" style="background:#ccc;" onclick="finishCourt(' + c + ')" ' + (getAvailablePlayersForCourt().length < 4 ? 'disabled' : '') + '>次を組む</button>';
+                }
+                courtsContainer.appendChild(box);
+            }
+
+            // ② 現在ベンチでお休みしている（＝どのコートにも入っていない）メンバーの一覧
+            var available = getAvailablePlayersForCourt();
+            available.sort(function(a, b) { return a - b; });
+            var restsText = "";
+            for (var r = 0; r < available.length; r++) { restsText += available[r] + "番" + (r < available.length - 1 ? ", " : ""); }
+            document.getElementById('txt-rest').innerText = restsText ? restsText : "なし（全員プレイ中）";
+
+            // ③ メンバー全員の通算成績リスト
+            var memList = document.getElementById('l-member');
+            memList.innerHTML = '';
+            
+            for (var i = 0; i < currentMembers.length; i++) {
+                var memberId = currentMembers[i];
+                var row = document.createElement('div');
+                row.className = 'member-row';
+                var tag = newlyArrived.has(memberId) ? '<span class="badge">優先</span>' : '';
+                
+                // 💡 今コートに入っているか、ベンチにいるかを視覚的に判別
+                var statusText = '<span style="font-size:12px; color:var(--primary); font-weight:bold;">試合中</span>';
+                if (available.indexOf(memberId) !== -1) {
+                    statusText = '<span style="font-size:12px; color:var(--warning); font-weight:bold;">ベンチ休</span>';
+                }
+                
+                var count = playCounts[memberId] || 0;
+                row.innerHTML = '<div>👤 ' + memberId + '番 ' + tag + ' [' + statusText + ']</div><div><span style="font-size:13px; color:#666; margin-right:10px;">' + count + '回</span><button onclick="onLeave(' + memberId + ')" style="color:var(--danger); border:none; background:none; font-weight:bold;">削除</button></div>';
+                memList.appendChild(row);
+            }
+
+            // ④ 過去の全コートの対戦履歴
+            if (pastMatches.length > 0) {
+                document.getElementById('c-hist').style.display = 'block';
+                var histList = document.getElementById('l-hist');
+                histList.innerHTML = '';
+                for (var hIdx = pastMatches.length - 1; hIdx >= 0; hIdx--) {
+                    var h = pastMatches[hIdx];
+                    var rowH = document.createElement('div');
+                    rowH.style = 'padding:6px; background:#f8f9fa; border-left:4px solid var(--secondary); border-radius:0 6px 6px 0; font-size:13px;';
+                    rowH.innerHTML = '<div style="font-weight:bold; color:var(--secondary);">第 ' + h.matchNumber + ' 試合 (コート' + h.courtNumber + ')</div><div>' + h.p1 + '番-' + h.p2 + '番 vs ' + h.p3 + '番-' + h.p4 + '番</div>';
+                    histList.appendChild(rowH);
+                }
+            } else { document.getElementById('c-hist').style.display = 'none'; }
+        }
+
+        function secureShuffle(array) { var copy = array.slice(); for (var i = copy.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), temp = copy[i]; copy[i] = copy[j]; copy[j] = temp; } return copy; }
+    </script>
+</body>
+</html>
