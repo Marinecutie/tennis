@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>テニス乱数表 1面特化</title>
+    <title>テニス乱数表 実数表示版</title>
     <style>
         :root { --primary:#2bc44a; --secondary:#1a73e8; --warning:#e67e22; --danger:#e74c3c; }
         * { box-sizing:border-box; margin:0; padding:0; font-family:-apple-system,sans-serif; }
@@ -13,14 +13,18 @@
         .btn-arrival { background:var(--secondary); color:white; border:none; padding:8px 14px; border-radius:8px; font-weight:bold; }
         .member-row { display:flex; justify-content:space-between; align-items:center; padding:10px; background:#f8f9fa; border-radius:8px; margin-bottom:6px; }
         .badge { background:rgba(231,76,60,0.1); color:var(--danger); font-size:11px; font-weight:bold; padding:2px 6px; border-radius:4px; }
+        .badge-break { background:rgba(136,136,136,0.1); color:#666; font-size:11px; font-weight:bold; padding:2px 6px; border-radius:4px; }
         .team { font-size:18px; font-weight:bold; width:45%; text-align:center; }
         .footer { position:fixed; bottom:0; left:0; right:0; background:white; padding:12px 15px; box-shadow:0 -2px 10px rgba(0,0,0,0.05); }
         .btn-main { width:100%; background:var(--primary); color:white; border:none; padding:14px; border-radius:10px; font-size:18px; font-weight:bold; }
         .btn-main:disabled { background:#ccc; }
+        .btn-action { border:none; background:none; font-weight:bold; font-size:14px; cursor:pointer; }
+        /* 💡 実試合数用の綺麗な黄色（ゴールド）の文字スタイル */
+        .txt-yellow { color:#d35400; font-weight:bold; margin-right:10px; background:rgba(230,126,34,0.1); padding:2px 6px; border-radius:4px; font-size:12px; }
     </style>
 </head>
 <body>
-    <div style="text-align:center; margin-bottom:20px;"><h2>🎾 テニス乱数表(1面特化)</h2></div>
+    <div style="text-align:center; margin-bottom:20px;"><h2>🎾 テニス乱数表 (実数表示版)</h2></div>
     <div id="app">
         <!-- 【画面1】設定画面 -->
         <div id="v-setup" class="card" style="text-align:center; padding:40px 15px;">
@@ -44,46 +48,93 @@
                 <div style="display:flex; justify-content:space-between; align-items:center;"><div id="t1" class="team"></div><div style="color:#888; font-weight:bold;">vs</div><div id="t2" class="team"></div></div>
             </div>
             <div id="c-rest" class="card" style="display:none;"><div class="title">今回のお休み</div><div id="txt-rest" style="font-size:16px; font-weight:bold; color:var(--warning);"></div></div>
-            <div class="card"><div class="title">メンバー一覧（削除で早退）</div><div id="l-member"></div></div>
+            <div class="card"><div class="title">メンバー一覧（回数＝計算用 / 黄色＝実際の試合数）</div><div id="l-member"></div></div>
             <div id="c-hist" class="card" style="display:none;"><div class="title">過去の対戦履歴</div><div id="l-hist" style="max-height:180px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;"></div></div>
             <div class="footer">
-                <button id="btn-undo" style="width:100%; background:var(--warning); color:white; border:none; padding:8px; border-radius:8px; font-size:14px; font-weight:bold; margin-bottom:8px; display:none;" onclick="undoAction()">↩️ 1手前に戻す</button>
+                <button id="btn-undo" class="btn-action" style="width:100%; background:var(--warning); color:white; border:none; padding:8px; border-radius:8px; font-size:14px; font-weight:bold; margin-bottom:8px; display:none;" onclick="undoAction()">↩️ 1手前に戻す</button>
                 <button id="btn-next" class="btn-main" onclick="drawMatch()">次の試合を決定</button>
             </div>
         </div>
     </div>
     <script>
         var initCount = 6, currentMembers = [], nextNum = 1, totalMatches = 0, currentMatch = null, restingPlayers = [], newlyArrived = new Set(), playCounts = {}, pastMatches = [], pairHistory = [], stateHistory = [];
-        var serialPlayCounts = {}; // 各メンバーの連続試合数カウンター
+        var serialPlayCounts = {};
+        var breakMembers = new Set();
+        var realPlayCounts = {};
 
         function saveState() {
-            stateHistory.push({ currentMembers:currentMembers.slice(), nextNum:nextNum, totalMatches:totalMatches, currentMatch:currentMatch ? Object.assign({}, currentMatch) : null, restingPlayers:restingPlayers.slice(), newlyArrived:new Set(newlyArrived), playCounts:Object.assign({}, playCounts), pastMatches:JSON.parse(JSON.stringify(pastMatches)), pairHistory:JSON.parse(JSON.stringify(pairHistory)), serialPlayCounts:Object.assign({}, serialPlayCounts) });
+            stateHistory.push({ currentMembers:currentMembers.slice(), nextNum:nextNum, totalMatches:totalMatches, currentMatch:currentMatch ? Object.assign({}, currentMatch) : null, restingPlayers:restingPlayers.slice(), newlyArrived:new Set(newlyArrived), playCounts:Object.assign({}, playCounts), pastMatches:JSON.parse(JSON.stringify(pastMatches)), pairHistory:JSON.parse(JSON.stringify(pairHistory)), serialPlayCounts:Object.assign({}, serialPlayCounts), breakMembers:new Set(breakMembers), realPlayCounts:Object.assign({}, realPlayCounts) });
             if (stateHistory.length > 5) { stateHistory.shift(); }
         }
         function undoAction() {
             if (stateHistory.length === 0) return; var p = stateHistory.pop();
-            currentMembers = p.currentMembers; nextNum = p.nextNum; totalMatches = p.totalMatches; currentMatch = p.currentMatch; restingPlayers = p.restingPlayers; newlyArrived = p.newlyArrived; playCounts = p.playCounts; pastMatches = p.pastMatches; pairHistory = p.pairHistory; serialPlayCounts = p.serialPlayCounts;
+            currentMembers = p.currentMembers; nextNum = p.nextNum; totalMatches = p.totalMatches; currentMatch = p.currentMatch; restingPlayers = p.restingPlayers; newlyArrived = p.newlyArrived; playCounts = p.playCounts; pastMatches = p.pastMatches; pairHistory = p.pairHistory; serialPlayCounts = p.serialPlayCounts; breakMembers = p.breakMembers; realPlayCounts = p.realPlayCounts;
             updateUI();
         }
         function addNum(amt) { var n = initCount + amt; if (n >= 4 && n <= 40) { initCount = n; document.getElementById('txt-init').innerText = initCount; } }
         function startApp() {
-            currentMembers = []; for (var i = 1; i <= initCount; i++) { currentMembers.push(i); playCounts[i] = 0; serialPlayCounts[i] = 0; }
-            nextNum = initCount + 1; document.getElementById('v-setup').style.display = 'none'; document.getElementById('v-main').style.display = 'block'; stateHistory = []; updateUI();
+            currentMembers = []; for (var i = 1; i <= initCount; i++) { currentMembers.push(i); playCounts[i] = 0; serialPlayCounts[i] = 0; realPlayCounts[i] = 0; }
+            nextNum = initCount + 1; document.getElementById('v-setup').style.display = 'none'; document.getElementById('v-main').style.display = 'block'; stateHistory = []; breakMembers.clear(); updateUI();
         }
-        function onArrival() { saveState(); var counts = []; for (var i = 0; i < currentMembers.length; i++) { counts.push(playCounts[currentMembers[i]] || 0); } var minC = currentMembers.length > 0 ? Math.min.apply(null, counts) : 0; playCounts[nextNum] = minC; serialPlayCounts[nextNum] = 0; currentMembers.push(nextNum); newlyArrived.add(nextNum); nextNum += 1; updateUI(); }
-        function onLeave(id) { saveState(); newlyArrived.delete(id); delete serialPlayCounts[id]; var updated = []; for (var i = 0; i < currentMembers.length; i++) { if (currentMembers[i] !== id) { updated.push(currentMembers[i]); } } currentMembers = updated; updateUI(); }
+        function onArrival() { saveState(); var counts = []; for (var i = 0; i < currentMembers.length; i++) { counts.push(playCounts[currentMembers[i]] || 0); } var minC = currentMembers.length > 0 ? Math.min.apply(null, counts) : 0; playCounts[nextNum] = minC; serialPlayCounts[nextNum] = 0; realPlayCounts[nextNum] = 0; currentMembers.push(nextNum); newlyArrived.add(nextNum); nextNum += 1; updateUI(); }
+        function onLeave(id) { saveState(); newlyArrived.delete(id); breakMembers.delete(id); delete serialPlayCounts[id]; delete realPlayCounts[id]; var updated = []; for (var i = 0; i < currentMembers.length; i++) { if (currentMembers[i] !== id) { updated.push(currentMembers[i]); } } currentMembers = updated; updateUI(); }
         
+        // 💡 【大改造】中座・復帰を連発されても、試合数が不正にワープしない厳格ジャッジルール
+        function toggleBreak(id) {
+            saveState();
+            var targetId = Number(id);
+            if (breakMembers.has(targetId)) {
+                // 1. 自分本人が混ざる前に、現在コート側で動いている他のメンバーだけの最小試合数を調べます
+                var activeMembers = currentMembers.filter(function(m) { return !breakMembers.has(m); });
+                var counts = activeMembers.map(function(m) { return playCounts[m] || 0; });
+                var minC = counts.length > 0 ? Math.min.apply(null, counts) : 0;
+                
+                var myCount = playCounts[targetId] || 0;
+                
+                // 2. 【ご要望の厳格条件】本人の試合数が、周りの最小試合数より「少ない（置いてけぼり）」の場合だけ特別扱いします
+                if (myCount < minC) {
+                    playCounts[targetId] = minC; // 最小試合数に書き換えて合流
+                    newlyArrived.add(targetId);   // 次の1試合だけ最優先マークを点灯！
+                } else {
+                    // 3. 【同じかそれ以上の場合（連発時など）】
+                    // 試合数の上書きは一切せず、優先マークもつけません（＝ひいきせず普通にベンチへ合流）
+                    newlyArrived.delete(targetId);
+                }
+                
+                breakMembers.delete(targetId); // 中座リストから自分を消して復帰完了
+            } else {
+                breakMembers.add(targetId);
+                newlyArrived.delete(targetId);
+                if (currentMatch && (currentMatch.p1 === targetId || currentMatch.p2 === targetId || currentMatch.p3 === targetId || currentMatch.p4 === targetId)) {
+                    currentMatch = null; restingPlayers = [];
+                }
+            }
+            updateUI();
+        }
+
         function updateUI() {
-            document.getElementById('txt-stay').innerText = "滞在人数: " + currentMembers.length + "人"; document.getElementById('txt-next').innerText = nextNum; var btn = document.getElementById('btn-next'); btn.disabled = currentMembers.length < 4; btn.innerText = currentMembers.length < 4 ? "人数が足りません(4人以上)" : "次の試合を決定";
+            var activeCount = currentMembers.filter(function(m) { return !breakMembers.has(m); }).length;
+            document.getElementById('txt-stay').innerText = "滞在人数: " + currentMembers.length + "人 (稼働中: " + activeCount + "人)";
+            document.getElementById('txt-next').innerText = nextNum;
+            var btn = document.getElementById('btn-next');
+            btn.disabled = activeCount < 4;
+            btn.innerText = activeCount < 4 ? "稼働人数が足りません(4人以上)" : "次の試合を決定";
             var undoBtn = document.getElementById('btn-undo'); if (undoBtn) { undoBtn.style.display = stateHistory.length > 0 ? 'block' : 'none'; }
+            
             var memList = document.getElementById('l-member'); memList.innerHTML = '';
             for (var i = 0; i < currentMembers.length; i++) {
-                var m = currentMembers[i], row = document.createElement('div'); row.className = 'member-row'; var tag = newlyArrived.has(m) ? '<span class="badge">優先</span>' : '', count = playCounts[m] || 0;
-                row.innerHTML = '<div>👤 ' + m + '番 ' + tag + '</div><div><span style="font-size:13px; color:#666; margin-right:10px;">' + count + '回</span><button onclick="onLeave(' + m + ')" style="color:var(--danger); border:none; background:none; font-weight:bold;">削除</button></div>'; memList.appendChild(row);
+                var m = currentMembers[i], row = document.createElement('div'); row.className = 'member-row';
+                var count = playCounts[m] || 0, tag = newlyArrived.has(m) ? '<span class="badge">優先</span>' : '', breakText = "中座", rowStyle = "";
+                if (breakMembers.has(m)) { tag = '<span class="badge-break">中座中</span>'; breakText = "復帰"; rowStyle = "opacity: 0.6; background: #e9ecef;"; }
+                row.style = rowStyle;
+                
+                var realCount = realPlayCounts[m] || 0;
+                row.innerHTML = '<div>👤 ' + m + '番 ' + tag + '</div><div style="display:flex; align-items:center; gap:6px;"><span class="txt-yellow">実数:' + realCount + '回</span><span style="font-size:13px; color:#666; margin-right:4px;">' + count + '回</span><button class="btn-action" onclick="toggleBreak(' + m + ')" style="color:var(--warning);">' + breakText + '</button><button class="btn-action" onclick="onLeave(' + m + ')" style="color:var(--danger);">削除</button></div>';
+                memList.appendChild(row);
             }
             if (currentMatch) {
                 document.getElementById('c-match').style.display = 'block'; document.getElementById('txt-match-num').innerText = "現在の対戦カード (第 " + currentMatch.matchNumber + " 試合)"; document.getElementById('t1').innerText = currentMatch.p1 + "番 & " + currentMatch.p2 + "番"; document.getElementById('t2').innerText = currentMatch.p3 + "番 & " + currentMatch.p4 + "番";
-                var validRests = []; for (var j = 0; j < restingPlayers.length; j++) { if (currentMembers.indexOf(restingPlayers[j]) !== -1) { validRests.push(restingPlayers[j]); } }
+                var validRests = []; for (var j = 0; j < restingPlayers.length; j++) { if (currentMembers.indexOf(restingPlayers[j]) !== -1 && !breakMembers.has(restingPlayers[j])) { validRests.push(restingPlayers[j]); } }
                 validRests.sort(function(a, b) { return a - b; }); var restsText = ""; for (var k = 0; k < validRests.length; k++) { restsText += validRests[k] + "番" + (k < validRests.length - 1 ? ", " : ""); }
                 document.getElementById('c-rest').style.display = restsText ? 'block' : 'none'; document.getElementById('txt-rest').innerText = restsText;
             } else { document.getElementById('c-match').style.display = 'none'; document.getElementById('c-rest').style.display = 'none'; }
@@ -96,40 +147,40 @@
         function getPairCount(p1, p2) { var count = 0; for (var i = 0; i < pairHistory.length; i++) { var h = pairHistory[i]; var h1 = h.concat().shift(); var h2 = h.concat().pop(); if ((h1 === p1 && h2 === p2) || (h1 === p2 && h2 === p1)) { count++; } } return count; }
         // 超平等組み合わせ自動計算アルゴリズム
         function drawMatch() {
-            if (currentMembers.length < 4) return; saveState(); totalMatches += 1; var finalMatch = null;
+            var activeMembers = currentMembers.filter(function(m) { return !breakMembers.has(m); });
+            if (activeMembers.length < 4) return;
+            saveState(); totalMatches += 1; var finalMatch = null;
+            
             if (totalMatches === 1) {
                 finalMatch = { matchNumber: 1, p1: 1, p2: 2, p3: 3, p4: 4 };
                 newlyArrived.delete(1); newlyArrived.delete(2); newlyArrived.delete(3); newlyArrived.delete(4);
             } else {
-                // 💡 【新ルール①＆②】若い番号優先 ＆ 4連投防止の並び替えロジック
-                var candidates = secureShuffle(currentMembers).sort(function(a, b) {
-                    // まだ試合をしていない（0回）人がいるかチェック
-                    var hasZeroMatch = currentMembers.some(function(m) { return (playCounts[m] || 0) === 0; });
-                    
+                var candidates = secureShuffle(activeMembers).sort(function(a, b) {
+                    var hasZeroMatch = activeMembers.some(function(m) { return (playCounts[m] || 0) === 0; });
                     if (hasZeroMatch) {
-                        // 1巡目が終わるまでは、通算試合数の少ない順を大前提としつつ、同じ0回なら「若い番号」を絶対に優先
                         if ((playCounts[a] || 0) !== (playCounts[b] || 0)) { return (playCounts[a] || 0) - (playCounts[b] || 0); }
                         return a - b; 
                     } else {
-                        // 2巡目以降は連投防止と直前お休み優先ルール
                         var serialA = serialPlayCounts[a] || 0;
                         var serialB = serialPlayCounts[b] || 0;
-                        // 6人以下のとき、すでに2連続以上プレイしている人は最優先で後ろに下げる（連投ストッパー）
-                        if (currentMembers.length <= 6) {
+                        
+                        if (activeMembers.length <= 6) {
                             if (serialA >= 2 || serialB >= 2) { return serialA - serialB; }
                         } else {
                             if (serialA >= 3 || serialB >= 3) { return serialA - serialB; }
                         }
+                        
                         var isAResting = restingPlayers.indexOf(a) !== -1 ? 1 : 0;
                         var isBResting = restingPlayers.indexOf(b) !== -1 ? 1 : 0;
                         if (isAResting !== isBResting) { return isBResting - isAResting; }
+                        
                         return (playCounts[a] || 0) - (playCounts[b] || 0);
                     }
                 });
 
                 var selected = [];
                 var rawArrivals = [];
-                for (var aIdx = 0; aIdx < currentMembers.length; aIdx++) { if (newlyArrived.has(currentMembers[aIdx])) { rawArrivals.push(currentMembers[aIdx]); } }
+                for (var aIdx = 0; aIdx < activeMembers.length; aIdx++) { if (newlyArrived.has(activeMembers[aIdx])) { rawArrivals.push(activeMembers[aIdx]); } }
                 var arrivals = secureShuffle(rawArrivals);
                 for (var i = 0; i < arrivals.length; i++) { if (selected.length < 4) { selected.push(arrivals[i]); candidates = candidates.filter(function(c) { return c !== arrivals[i]; }); } }
                 newlyArrived.clear(); while (selected.length < 4 && candidates.length > 0) { selected.push(candidates.shift()); }
@@ -151,14 +202,17 @@
             }
             currentMatch = finalMatch; pastMatches.push(finalMatch);
 
-            // 通算試合数のカウントアップ
             playCounts[finalMatch.p1] = (playCounts[finalMatch.p1] || 0) + 1;
             playCounts[finalMatch.p2] = (playCounts[finalMatch.p2] || 0) + 1;
             playCounts[finalMatch.p3] = (playCounts[finalMatch.p3] || 0) + 1;
             playCounts[finalMatch.p4] = (playCounts[finalMatch.p4] || 0) + 1;
 
-            // 💡 連投カウンターの更新処理
-            for (var mId in serialPlayCounts) { serialPlayCounts[mId] = 0; } // 一度全員リセット
+            realPlayCounts[finalMatch.p1] = (realPlayCounts[finalMatch.p1] || 0) + 1;
+            realPlayCounts[finalMatch.p2] = (realPlayCounts[finalMatch.p2] || 0) + 1;
+            realPlayCounts[finalMatch.p3] = (realPlayCounts[finalMatch.p3] || 0) + 1;
+            realPlayCounts[finalMatch.p4] = (realPlayCounts[finalMatch.p4] || 0) + 1;
+
+            for (var mId in serialPlayCounts) { serialPlayCounts[mId] = 0; }
             serialPlayCounts[finalMatch.p1] = (serialPlayCounts[finalMatch.p1] || 0) + 1;
             serialPlayCounts[finalMatch.p2] = (serialPlayCounts[finalMatch.p2] || 0) + 1;
             serialPlayCounts[finalMatch.p3] = (serialPlayCounts[finalMatch.p3] || 0) + 1;
