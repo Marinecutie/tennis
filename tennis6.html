@@ -125,7 +125,7 @@
             for (var i = 0; i < currentMembers.length; i++) {
                 var m = currentMembers[i], row = document.createElement('div'); row.className = 'member-row';
                 var count = playCounts[m] || 0, tag = newlyArrived.has(m) ? '<span class="badge">優先</span>' : '', breakText = "中座", rowStyle = "";
-                if (breakMembers.has(m)) { tag = '<span class="badge-break">中座中</span>'; breakText = "復帰"; rowStyle = "opacity: 0.6; background: #e9ecef;"; }
+                if (breakMembers.has(m)) { tag = '<span class="badge-break">中座</span>'; breakText = "復帰"; rowStyle = "opacity: 0.6; background: #e9ecef;"; }
                 row.style = rowStyle;
                 
                 var realCount = realPlayCounts[m] || 0;
