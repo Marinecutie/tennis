@@ -129,7 +129,7 @@
                 row.style = rowStyle;
                 
                 var realCount = realPlayCounts[m] || 0;
-                row.innerHTML = '<div>👤 ' + m + '番 ' + tag + '</div><div style="display:flex; align-items:center; gap:6px;"><span class="txt-yellow">実数:' + realCount + '回</span><span style="font-size:13px; color:#666; margin-right:4px;">' + count + '回</span><button class="btn-action" onclick="toggleBreak(' + m + ')" style="color:var(--warning);">' + breakText + '</button><button class="btn-action" onclick="onLeave(' + m + ')" style="color:var(--danger);">削除</button></div>';
+                row.innerHTML = '<div>👤 ' + m + '番 ' + tag + '</div><div style="display:flex; align-items:center; gap:6px;"><span class="txt-yellow">実' + realCount + '回</span><span style="font-size:13px; color:#666; margin-right:4px;">' + count + '回</span><button class="btn-action" onclick="toggleBreak(' + m + ')" style="color:var(--warning);">' + breakText + '</button><button class="btn-action" onclick="onLeave(' + m + ')" style="color:var(--danger);">削除</button></div>';
                 memList.appendChild(row);
             }
             if (currentMatch) {
