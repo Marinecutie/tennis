@@ -114,7 +114,7 @@
 
         function updateUI() {
             var activeCount = currentMembers.filter(function(m) { return !breakMembers.has(m); }).length;
-            document.getElementById('txt-stay').innerText = "滞在人数: " + currentMembers.length + "人 (稼働中: " + activeCount + "人)";
+            document.getElementById('txt-stay').innerText = "滞在" + currentMembers.length + "人 (稼働" + activeCount + "人)";
             document.getElementById('txt-next').innerText = nextNum;
             var btn = document.getElementById('btn-next');
             btn.disabled = activeCount < 4;
