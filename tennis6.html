@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>テニス乱数表 実数表示版</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+    <title>テニス乱数表 1面完全シャッフル</title>
     <style>
         :root { --primary:#2bc44a; --secondary:#1a73e8; --warning:#e67e22; --danger:#e74c3c; }
         * { box-sizing:border-box; margin:0; padding:0; font-family:-apple-system,sans-serif; }
@@ -19,14 +20,13 @@
         .btn-main { width:100%; background:var(--primary); color:white; border:none; padding:14px; border-radius:10px; font-size:18px; font-weight:bold; }
         .btn-main:disabled { background:#ccc; }
         .btn-action { border:none; background:none; font-weight:bold; font-size:14px; cursor:pointer; }
-        /* 💡 実試合数用の綺麗な黄色（ゴールド）の文字スタイル */
         .txt-yellow { color:#d35400; font-weight:bold; margin-right:10px; background:rgba(230,126,34,0.1); padding:2px 6px; border-radius:4px; font-size:12px; }
     </style>
 </head>
 <body>
-    <div style="text-align:center; margin-bottom:20px;"><h2>🎾 テニス乱数表(1面版)</h2></div>
+    <div style="text-align:center; margin-bottom:20px;"><h2>🎾 テニス乱数表 (1面版)</h2></div>
     <div id="app">
-        <!-- 【画面1】設定画面 -->
+        <!-- 【画面1】初期設定画面 -->
         <div id="v-setup" class="card" style="text-align:center; padding:40px 15px;">
             <h3 style="margin-bottom:20px;">初期メンバーの人数を設定</h3>
             <div style="display:flex; justify-content:center; align-items:center; gap:30px; margin-bottom:30px;">
@@ -39,7 +39,7 @@
         <!-- 【画面2】メイン画面 -->
         <div id="v-main" style="display:none;">
             <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
-                <div><h4 id="txt-stay">滞在人数: 0人</h4><p style="font-size:11px; color:#888;">遅参者は次の1試合のみ最優先</p></div>
+                <div><h4 id="txt-stay">滞在人数: 0人</h4><p style="font-size:11px; color:#888;">遅参・復帰者は次の1試合のみ最優先</p></div>
                 <button class="btn-arrival" onclick="onArrival()">👤 <span id="txt-next">7</span>番到着</button>
             </div>
             <div id="c-match" class="card" style="display:none;">
@@ -58,9 +58,8 @@
     </div>
     <script>
         var initCount = 6, currentMembers = [], nextNum = 1, totalMatches = 0, currentMatch = null, restingPlayers = [], newlyArrived = new Set(), playCounts = {}, pastMatches = [], pairHistory = [], stateHistory = [];
+        var breakMembers = new Set(), realPlayCounts = {};
         var serialPlayCounts = {};
-        var breakMembers = new Set();
-        var realPlayCounts = {};
 
         function saveState() {
             stateHistory.push({ currentMembers:currentMembers.slice(), nextNum:nextNum, totalMatches:totalMatches, currentMatch:currentMatch ? Object.assign({}, currentMatch) : null, restingPlayers:restingPlayers.slice(), newlyArrived:new Set(newlyArrived), playCounts:Object.assign({}, playCounts), pastMatches:JSON.parse(JSON.stringify(pastMatches)), pairHistory:JSON.parse(JSON.stringify(pairHistory)), serialPlayCounts:Object.assign({}, serialPlayCounts), breakMembers:new Set(breakMembers), realPlayCounts:Object.assign({}, realPlayCounts) });
@@ -72,53 +71,38 @@
             updateUI();
         }
         function addNum(amt) { var n = initCount + amt; if (n >= 4 && n <= 40) { initCount = n; document.getElementById('txt-init').innerText = initCount; } }
+        
         function startApp() {
-            currentMembers = []; for (var i = 1; i <= initCount; i++) { currentMembers.push(i); playCounts[i] = 0; serialPlayCounts[i] = 0; realPlayCounts[i] = 0; }
+            currentMembers = [];
+            for (var i = 1; i <= initCount; i++) { currentMembers.push(i); playCounts[i] = 0; realPlayCounts[i] = 0; serialPlayCounts[i] = 0; }
             nextNum = initCount + 1; document.getElementById('v-setup').style.display = 'none'; document.getElementById('v-main').style.display = 'block'; stateHistory = []; breakMembers.clear(); updateUI();
         }
-        function onArrival() { saveState(); var counts = []; for (var i = 0; i < currentMembers.length; i++) { counts.push(playCounts[currentMembers[i]] || 0); } var minC = currentMembers.length > 0 ? Math.min.apply(null, counts) : 0; playCounts[nextNum] = minC; serialPlayCounts[nextNum] = 0; realPlayCounts[nextNum] = 0; currentMembers.push(nextNum); newlyArrived.add(nextNum); nextNum += 1; updateUI(); }
+        function onArrival() { saveState(); var counts = []; for (var i = 0; i < currentMembers.length; i++) { counts.push(playCounts[currentMembers[i]] || 0); } var minC = currentMembers.length > 0 ? Math.min.apply(null, counts) : 0; playCounts[nextNum] = minC; realPlayCounts[nextNum] = 0; serialPlayCounts[nextNum] = 0; currentMembers.push(nextNum); newlyArrived.add(nextNum); nextNum += 1; updateUI(); }
         function onLeave(id) { saveState(); newlyArrived.delete(id); breakMembers.delete(id); delete serialPlayCounts[id]; delete realPlayCounts[id]; var updated = []; for (var i = 0; i < currentMembers.length; i++) { if (currentMembers[i] !== id) { updated.push(currentMembers[i]); } } currentMembers = updated; updateUI(); }
         
-        // 💡 【大改造】中座・復帰を連発されても、試合数が不正にワープしない厳格ジャッジルール
         function toggleBreak(id) {
-            saveState();
-            var targetId = Number(id);
+            saveState(); var targetId = Number(id);
             if (breakMembers.has(targetId)) {
-                // 1. 自分本人が混ざる前に、現在コート側で動いている他のメンバーだけの最小試合数を調べます
                 var activeMembers = currentMembers.filter(function(m) { return !breakMembers.has(m); });
                 var counts = activeMembers.map(function(m) { return playCounts[m] || 0; });
                 var minC = counts.length > 0 ? Math.min.apply(null, counts) : 0;
-                
-                var myCount = playCounts[targetId] || 0;
-                
-                // 2. 【ご要望の厳格条件】本人の試合数が、周りの最小試合数より「少ない（置いてけぼり）」の場合だけ特別扱いします
-                if (myCount < minC) {
-                    playCounts[targetId] = minC; // 最小試合数に書き換えて合流
-                    newlyArrived.add(targetId);   // 次の1試合だけ最優先マークを点灯！
-                } else {
-                    // 3. 【同じかそれ以上の場合（連発時など）】
-                    // 試合数の上書きは一切せず、優先マークもつけません（＝ひいきせず普通にベンチへ合流）
-                    newlyArrived.delete(targetId);
-                }
-                
-                breakMembers.delete(targetId); // 中座リストから自分を消して復帰完了
+                if (playCounts[targetId] < minC) { playCounts[targetId] = minC; }
+                breakMembers.delete(targetId); newlyArrived.add(targetId);
             } else {
-                breakMembers.add(targetId);
-                newlyArrived.delete(targetId);
-                if (currentMatch && (currentMatch.p1 === targetId || currentMatch.p2 === targetId || currentMatch.p3 === targetId || currentMatch.p4 === targetId)) {
-                    currentMatch = null; restingPlayers = [];
-                }
+                breakMembers.add(targetId); newlyArrived.delete(targetId);
+                if (currentMatch && (currentMatch.p1 === targetId || currentMatch.p2 === targetId || currentMatch.p3 === targetId || currentMatch.p4 === targetId)) { currentMatch = null; restingPlayers = []; }
             }
             updateUI();
         }
 
         function updateUI() {
-            var activeCount = currentMembers.filter(function(m) { return !breakMembers.has(m); }).length;
-            document.getElementById('txt-stay').innerText = "滞在" + currentMembers.length + "人 (稼働" + activeCount + "人)";
+            var activeMembers = currentMembers.filter(function(m) { return !breakMembers.has(m); });
+            var is4Multiple = (activeMembers.length % 4 === 0 && activeMembers.length > 0);
+            var modeName = is4Multiple ? " ⚠️ " + activeMembers.length + "人専用シャッフルモード" : "";
+            
+            document.getElementById('txt-stay').innerText = "滞在人数: " + currentMembers.length + "人 (稼働中: " + activeMembers.length + "人)" + modeName;
             document.getElementById('txt-next').innerText = nextNum;
-            var btn = document.getElementById('btn-next');
-            btn.disabled = activeCount < 4;
-            btn.innerText = activeCount < 4 ? "稼働人数が足りません(4人以上)" : "次の試合を決定";
+            var btn = document.getElementById('btn-next'); btn.disabled = activeMembers.length < 4; btn.innerText = activeMembers.length < 4 ? "稼働人数が足りません(4人以上)" : "次の試合を決定";
             var undoBtn = document.getElementById('btn-undo'); if (undoBtn) { undoBtn.style.display = stateHistory.length > 0 ? 'block' : 'none'; }
             
             var memList = document.getElementById('l-member'); memList.innerHTML = '';
@@ -127,7 +111,6 @@
                 var count = playCounts[m] || 0, tag = newlyArrived.has(m) ? '<span class="badge">優先</span>' : '', breakText = "中座", rowStyle = "";
                 if (breakMembers.has(m)) { tag = '<span class="badge-break">中座</span>'; breakText = "復帰"; rowStyle = "opacity: 0.6; background: #e9ecef;"; }
                 row.style = rowStyle;
-                
                 var realCount = realPlayCounts[m] || 0;
                 row.innerHTML = '<div>👤 ' + m + '番 ' + tag + '</div><div style="display:flex; align-items:center; gap:6px;"><span class="txt-yellow">実' + realCount + '回</span><span style="font-size:13px; color:#666; margin-right:4px;">' + count + '回</span><button class="btn-action" onclick="toggleBreak(' + m + ')" style="color:var(--warning);">' + breakText + '</button><button class="btn-action" onclick="onLeave(' + m + ')" style="color:var(--danger);">削除</button></div>';
                 memList.appendChild(row);
@@ -144,52 +127,126 @@
             } else { document.getElementById('c-hist').style.display = 'none'; }
         }
         function secureShuffle(array) { var copy = array.slice(); for (var i = copy.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), temp = copy[i]; copy[i] = copy[j]; copy[j] = temp; } return copy; }
-        function getPairCount(p1, p2) { var count = 0; for (var i = 0; i < pairHistory.length; i++) { var h = pairHistory[i]; var h1 = h.concat().shift(); var h2 = h.concat().pop(); if ((h1 === p1 && h2 === p2) || (h1 === p2 && h2 === p1)) { count++; } } return count; }
-        // 超平等組み合わせ自動計算アルゴリズム
+        function getPairCount(p1, p2) { var count = 0; for (var i = 0; i < pairHistory.length; i++) { var h = pairHistory[i]; if ((h.concat().shift()===p1&&h.concat().pop()===p2)||(h.concat().shift()===p2&&h.concat().pop()===p1)) { count++; } } return count; }
+        // 超平等組み合わせ自動計算アルゴリズム（1巡目王道固定 ＆ 試合数偏りブロック搭載）
         function drawMatch() {
             var activeMembers = currentMembers.filter(function(m) { return !breakMembers.has(m); });
             if (activeMembers.length < 4) return;
             saveState(); totalMatches += 1; var finalMatch = null;
             
-            if (totalMatches === 1) {
+            var zeroMatchPlayers = activeMembers.filter(function(m) { return (playCounts[m] || 0) === 0; });
+            var is4Multiple = (activeMembers.length % 4 === 0);
+
+            // 💡 【ルール①】まだ1回も出ていない人が4人以上いる間は、背番号の若い順に4人ずつ王道固定
+            if (is4Multiple && zeroMatchPlayers.length >= 4) {
+                var sortedZeroPlayers = zeroMatchPlayers.slice().sort(function(a, b) { return a - b; });
+                var p1 = sortedZeroPlayers[0];
+                var p2 = sortedZeroPlayers[1];
+                var p3 = sortedZeroPlayers[2];
+                var p4 = sortedZeroPlayers[3];
+                finalMatch = { matchNumber: totalMatches, p1: p1, p2: p2, p3: p3, p4: p4 };
+                newlyArrived.delete(p1); newlyArrived.delete(p2); newlyArrived.delete(p3); newlyArrived.delete(p4);
+            } else if (totalMatches === 1) {
                 finalMatch = { matchNumber: 1, p1: 1, p2: 2, p3: 3, p4: 4 };
                 newlyArrived.delete(1); newlyArrived.delete(2); newlyArrived.delete(3); newlyArrived.delete(4);
             } else {
-                var candidates = secureShuffle(activeMembers).sort(function(a, b) {
-                    var hasZeroMatch = activeMembers.some(function(m) { return (playCounts[m] || 0) === 0; });
-                    if (hasZeroMatch) {
-                        if ((playCounts[a] || 0) !== (playCounts[b] || 0)) { return (playCounts[a] || 0) - (playCounts[b] || 0); }
-                        return a - b; 
-                    } else {
-                        var serialA = serialPlayCounts[a] || 0;
-                        var serialB = serialPlayCounts[b] || 0;
-                        
-                        if (activeMembers.length <= 6) {
-                            if (serialA >= 2 || serialB >= 2) { return serialA - serialB; }
-                        } else {
-                            if (serialA >= 3 || serialB >= 3) { return serialA - serialB; }
-                        }
-                        
-                        var isAResting = restingPlayers.indexOf(a) !== -1 ? 1 : 0;
-                        var isBResting = restingPlayers.indexOf(b) !== -1 ? 1 : 0;
-                        if (isAResting !== isBResting) { return isBResting - isAResting; }
-                        
-                        return (playCounts[a] || 0) - (playCounts[b] || 0);
-                    }
-                });
-
                 var selected = [];
-                var rawArrivals = [];
-                for (var aIdx = 0; aIdx < activeMembers.length; aIdx++) { if (newlyArrived.has(activeMembers[aIdx])) { rawArrivals.push(activeMembers[aIdx]); } }
-                var arrivals = secureShuffle(rawArrivals);
-                for (var i = 0; i < arrivals.length; i++) { if (selected.length < 4) { selected.push(arrivals[i]); candidates = candidates.filter(function(c) { return c !== arrivals[i]; }); } }
-                newlyArrived.clear(); while (selected.length < 4 && candidates.length > 0) { selected.push(candidates.shift()); }
+
+                if (is4Multiple) {
+                    // 🔥 【4の倍数専用シャッフルモード】
+                    var maxAttempts = 500; // 厳格な条件を満たすため最大500回超高速で再抽選します
+                    var success = false;
+
+                    for (var attempt = 0; attempt < maxAttempts; attempt++) {
+                        var pool = [];
+                        if (activeMembers.length === 4) {
+                            pool = activeMembers.slice();
+                        } else if (activeMembers.length === 8) {
+                            pool = secureShuffle(activeMembers);
+                        } else {
+                            // 12人以上の時は、直前にプレイした4人を除いた「残りの待機組」から優先してシャッフル
+                            var lastPlayed = new Set(restingPlayers.length > 0 ? currentMembers.filter(function(m) { return restingPlayers.indexOf(m) === -1 && !breakMembers.has(m); }) : []);
+                            var benched = activeMembers.filter(function(m) { return !lastPlayed.has(m); });
+                            pool = secureShuffle(benched).concat(secureShuffle(activeMembers.filter(function(m) { return lastPlayed.has(m); })));
+                        }
+
+                        var currentSelected = [];
+                        var arrivals = activeMembers.filter(function(m) { return newlyArrived.has(m); });
+                        for (var aI = 0; aI < arrivals.length; aI++) {
+                            if (currentSelected.length < 4) {
+                                currentSelected.push(arrivals[aI]);
+                                pool = pool.filter(function(p) { return p !== arrivals[aI]; });
+                            }
+                        }
+                        while (currentSelected.length < 4 && pool.length > 0) {
+                            currentSelected.push(pool.shift());
+                        }
+
+                        // 🚨 1. 連続試合数（連投ストッパー）の検証
+                        var isViolated = false;
+                        for (var s = 0; s < currentSelected.length; s++) {
+                            var pNum = currentSelected[s];
+                            var currentSerial = serialPlayCounts[pNum] || 0;
+                            if (activeMembers.length === 8 && currentSerial >= 2) { isViolated = true; break; }
+                            if (activeMembers.length >= 12 && currentSerial >= 1) { isViolated = true; break; }
+                        }
+
+                        // 🚨 2. 調整試合数の「偏りブロック」検証
+                        if (!isViolated) {
+                            var tempCounts = {};
+                            for (var k = 0; k < activeMembers.length; k++) {
+                                var mId = activeMembers[k];
+                                tempCounts[mId] = playCounts[mId] || 0;
+                                if (currentSelected.indexOf(mId) !== -1) { tempCounts[mId] += 1; } 
+                            }
+                            var values = [];
+                            for (var mKey in tempCounts) { values.push(tempCounts[mKey]); }
+                            var maxC = Math.max.apply(null, values);
+                            var minC = Math.min.apply(null, values);
+                            
+                            if (activeMembers.length === 8) {
+                                // 8人の時：試合数の差が「3以上」開いてしまう組み合わせなら却下（2回差以内に抑える）
+                                if ((maxC - minC) >= 3) { isViolated = true; }
+                            } else if (activeMembers.length >= 12) {
+                                // 💡 【ご要望ルール】12人以上の時：試合数の差が「2以上」開いてしまう組み合わせなら却下（1回差以内に抑える）
+                                if ((maxC - minC) >= 2) { isViolated = true; }
+                            }
+                        }
+
+                        if (!isViolated && currentSelected.length === 4) {
+                            selected = currentSelected;
+                            success = true;
+                            break; 
+                        }
+                    }
+
+                    if (!success) {
+                        var safePool = secureShuffle(activeMembers);
+                        selected = safePool.slice(0, 4);
+                    }
+
+                } else {
+                    // 🍃 【4の倍数以外のとき】いつもの超平等ロジック
+                    var candidates = secureShuffle(activeMembers).sort(function(a, b) {
+                        var hasZeroMatch = activeMembers.some(function(m) { return (playCounts[m] || 0) === 0; });
+                        if (hasZeroMatch) {
+                            if ((playCounts[a] || 0) !== (playCounts[b] || 0)) { return (playCounts[a] || 0) - (playCounts[b] || 0); }
+                            return a - b; 
+                        } else {
+                            var isAResting = restingPlayers.indexOf(a) !== -1 ? 1 : 0;
+                            var isBResting = restingPlayers.indexOf(b) !== -1 ? 1 : 0;
+                            if (isAResting !== isBResting) { return isBResting - isAResting; }
+                            return (playCounts[a] || 0) - (playCounts[b] || 0);
+                        }
+                    });
+
+                    var rawArrivals = activeMembers.filter(function(m) { return newlyArrived.has(m); });
+                    for (var i = 0; i < rawArrivals.length; i++) { if (selected.length < 4) { selected.push(rawArrivals[i]); candidates = candidates.filter(function(c) { return c !== rawArrivals[i]; }); } }
+                    while (selected.length < 4 && candidates.length > 0) { selected.push(candidates.shift()); }
+                }
                 
-                var cp1 = selected.concat().shift() || 0;
-                var cp2 = selected.concat().slice(1, 2).shift() || 0;
-                var cp3 = selected.concat().slice(2, 3).shift() || 0;
-                var cp4 = selected.concat().slice(3, 4).shift() || 0;
-                
+                newlyArrived.clear();
+                var cp1 = selected[0] || 0, cp2 = selected[1] || 0, cp3 = selected[2] || 0, cp4 = selected[3] || 0;
                 var patterns = [
                     { p1: cp1, p2: cp2, p3: cp3, p4: cp4, score: getPairCount(cp1, cp2) + getPairCount(cp3, cp4) },
                     { p1: cp1, p2: cp3, p3: cp2, p4: cp4, score: getPairCount(cp1, cp3) + getPairCount(cp2, cp4) },
@@ -197,7 +254,6 @@
                 ];
                 patterns.sort(function(a, b) { return a.score - b.score; });
                 var bestMatch = patterns.shift();
-                
                 finalMatch = { matchNumber: totalMatches, p1: bestMatch.p1, p2: bestMatch.p2, p3: bestMatch.p3, p4: bestMatch.p4 };
             }
             currentMatch = finalMatch; pastMatches.push(finalMatch);
@@ -212,11 +268,14 @@
             realPlayCounts[finalMatch.p3] = (realPlayCounts[finalMatch.p3] || 0) + 1;
             realPlayCounts[finalMatch.p4] = (realPlayCounts[finalMatch.p4] || 0) + 1;
 
-            for (var mId in serialPlayCounts) { serialPlayCounts[mId] = 0; }
-            serialPlayCounts[finalMatch.p1] = (serialPlayCounts[finalMatch.p1] || 0) + 1;
-            serialPlayCounts[finalMatch.p2] = (serialPlayCounts[finalMatch.p2] || 0) + 1;
-            serialPlayCounts[finalMatch.p3] = (serialPlayCounts[finalMatch.p3] || 0) + 1;
-            serialPlayCounts[finalMatch.p4] = (serialPlayCounts[finalMatch.p4] || 0) + 1;
+            for (var mId in serialPlayCounts) {
+                var mIdNum = Number(mId);
+                if (mIdNum === finalMatch.p1 || mIdNum === finalMatch.p2 || mIdNum === finalMatch.p3 || mIdNum === finalMatch.p4) {
+                    serialPlayCounts[mId] = (serialPlayCounts[mId] || 0) + 1; 
+                } else {
+                    serialPlayCounts[mId] = 0; 
+                }
+            }
 
             pairHistory.push([finalMatch.p1, finalMatch.p2]); pairHistory.push([finalMatch.p3, finalMatch.p4]);
             var active = [finalMatch.p1, finalMatch.p2, finalMatch.p3, finalMatch.p4], rests = []; for (var mIdx = 0; mIdx < currentMembers.length; mIdx++) { if (active.indexOf(currentMembers[mIdx]) === -1) { rests.push(currentMembers[mIdx]); } } restingPlayers = rests;
