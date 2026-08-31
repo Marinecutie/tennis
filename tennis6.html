@@ -77,7 +77,20 @@
             for (var i = 1; i <= initCount; i++) { currentMembers.push(i); playCounts[i] = 0; realPlayCounts[i] = 0; serialPlayCounts[i] = 0; }
             nextNum = initCount + 1; document.getElementById('v-setup').style.display = 'none'; document.getElementById('v-main').style.display = 'block'; stateHistory = []; breakMembers.clear(); updateUI();
         }
-        function onArrival() { saveState(); var counts = []; for (var i = 0; i < currentMembers.length; i++) { counts.push(playCounts[currentMembers[i]] || 0); } var minC = currentMembers.length > 0 ? Math.min.apply(null, counts) : 0; playCounts[nextNum] = minC; realPlayCounts[nextNum] = 0; serialPlayCounts[nextNum] = 0; currentMembers.push(nextNum); newlyArrived.add(nextNum); nextNum += 1; updateUI(); }
+        function onArrival() {
+            saveState();
+
+            // 遅参者の調整試合数は「現在稼働中」のメンバーだけを基準にする。
+            // 中座中のメンバーは最少値の計算から除外する。
+            var activeMembers = currentMembers.filter(function(m) {
+                return !breakMembers.has(m);
+            });
+            var counts = [];
+            for (var i = 0; i < activeMembers.length; i++) {
+                counts.push(playCounts[activeMembers[i]] || 0);
+            }
+            var minC = counts.length > 0 ? Math.min.apply(null, counts) : 0;
+ playCounts[nextNum] = minC; realPlayCounts[nextNum] = 0; serialPlayCounts[nextNum] = 0; currentMembers.push(nextNum); newlyArrived.add(nextNum); nextNum += 1; updateUI(); }
         function onLeave(id) { saveState(); newlyArrived.delete(id); breakMembers.delete(id); delete serialPlayCounts[id]; delete realPlayCounts[id]; var updated = []; for (var i = 0; i < currentMembers.length; i++) { if (currentMembers[i] !== id) { updated.push(currentMembers[i]); } } currentMembers = updated; updateUI(); }
         
         function toggleBreak(id) {
@@ -205,8 +218,8 @@
                             var minC = Math.min.apply(null, values);
                             
                             if (activeMembers.length === 8) {
-                                // 8人の時：試合数の差が「3以上」開いてしまう組み合わせなら却下（2回差以内に抑える）
-                                if ((maxC - minC) >= 3) { isViolated = true; }
+                                // 8人の時：試合数の差が「2以上」開いてしまう組み合わせなら却下（1回差以内に抑える）
+                                if ((maxC - minC) >= 2) { isViolated = true; }
                             } else if (activeMembers.length >= 12) {
                                 // 💡 【ご要望ルール】12人以上の時：試合数の差が「2以上」開いてしまう組み合わせなら却下（1回差以内に抑える）
                                 if ((maxC - minC) >= 2) { isViolated = true; }
