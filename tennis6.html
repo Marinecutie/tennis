@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>テニス乱数表 1面完全シャッフル</title>
+    <title>テニス乱数表 1面シャッフルレジウム</title>
     <style>
         :root { --primary:#2bc44a; --secondary:#1a73e8; --warning:#e67e22; --danger:#e74c3c; }
         * { box-sizing:border-box; margin:0; padding:0; font-family:-apple-system,sans-serif; }
@@ -73,10 +73,63 @@
         }
         function addNum(amt) { var n = initCount + amt; if (n >= 4 && n <= 40) { initCount = n; document.getElementById('txt-init').innerText = initCount; } }
         
+        // ===== アプリ状態の自動保存・復元 =====
+        var STORAGE_KEY = "tennisRandomAppState_v1";
+
+        function savePersistentState() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                    initCount:initCount, currentMembers:currentMembers, nextNum:nextNum,
+                    totalMatches:totalMatches, currentMatch:currentMatch,
+                    restingPlayers:restingPlayers, newlyArrived:Array.from(newlyArrived),
+                    playCounts:playCounts, pastMatches:pastMatches, pairHistory:pairHistory,
+                    stateHistory:stateHistory, breakMembers:Array.from(breakMembers),
+                    realPlayCounts:realPlayCounts, serialPlayCounts:serialPlayCounts
+                }));
+            } catch(e) { console.log("状態保存エラー:",e); }
+        }
+
+        function restorePersistentState() {
+            try {
+                var raw=localStorage.getItem(STORAGE_KEY);
+                if(!raw) return false;
+                var s=JSON.parse(raw);
+                if(!s || !Array.isArray(s.currentMembers) || s.currentMembers.length===0) return false;
+                initCount=s.initCount||6; currentMembers=s.currentMembers||[];
+                nextNum=s.nextNum||1; totalMatches=s.totalMatches||0;
+                currentMatch=s.currentMatch||null; restingPlayers=s.restingPlayers||[];
+                newlyArrived=new Set(s.newlyArrived||[]); playCounts=s.playCounts||{};
+                pastMatches=s.pastMatches||[]; pairHistory=s.pairHistory||[];
+                stateHistory=s.stateHistory||[]; breakMembers=new Set(s.breakMembers||[]);
+                realPlayCounts=s.realPlayCounts||{}; serialPlayCounts=s.serialPlayCounts||{};
+                document.getElementById('v-setup').style.display='none';
+                document.getElementById('v-main').style.display='block';
+                document.getElementById('txt-init').innerText=initCount;
+                updateUI();
+                return true;
+            } catch(e) { console.log("状態復元エラー:",e); return false; }
+        }
+
+        function clearPersistentState() {
+            try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
+        }
+
+        window.addEventListener("pagehide", savePersistentState);
+        window.addEventListener("beforeunload", savePersistentState);
+        window.addEventListener("visibilitychange", function(){
+            if(document.visibilityState==="hidden") savePersistentState();
+        });
+
         function startApp() {
-            currentMembers = [];
-            for (var i = 1; i <= initCount; i++) { currentMembers.push(i); playCounts[i] = 0; realPlayCounts[i] = 0; serialPlayCounts[i] = 0; }
-            nextNum = initCount + 1; document.getElementById('v-setup').style.display = 'none'; document.getElementById('v-main').style.display = 'block'; stateHistory = []; breakMembers.clear(); updateUI();
+            clearPersistentState();
+            currentMembers=[]; playCounts={}; realPlayCounts={}; serialPlayCounts={};
+            pastMatches=[]; pairHistory=[]; restingPlayers=[]; newlyArrived=new Set();
+            breakMembers=new Set(); currentMatch=null; totalMatches=0; stateHistory=[];
+            for (var i=1;i<=initCount;i++) { currentMembers.push(i); playCounts[i]=0; realPlayCounts[i]=0; serialPlayCounts[i]=0; }
+            nextNum=initCount+1;
+            document.getElementById('v-setup').style.display='none';
+            document.getElementById('v-main').style.display='block';
+            updateUI(); savePersistentState();
         }
         function onArrival() {
             saveState();
@@ -91,8 +144,8 @@
                 counts.push(playCounts[activeMembers[i]] || 0);
             }
             var minC = counts.length > 0 ? Math.min.apply(null, counts) : 0;
- playCounts[nextNum] = minC; realPlayCounts[nextNum] = 0; serialPlayCounts[nextNum] = 0; currentMembers.push(nextNum); newlyArrived.add(nextNum); nextNum += 1; updateUI(); }
-        function onLeave(id) { saveState(); newlyArrived.delete(id); breakMembers.delete(id); delete serialPlayCounts[id]; delete realPlayCounts[id]; var updated = []; for (var i = 0; i < currentMembers.length; i++) { if (currentMembers[i] !== id) { updated.push(currentMembers[i]); } } currentMembers = updated; updateUI(); }
+ playCounts[nextNum] = minC; realPlayCounts[nextNum] = 0; serialPlayCounts[nextNum] = 0; currentMembers.push(nextNum); newlyArrived.add(nextNum); nextNum += 1; updateUI(); savePersistentState(); }
+        function onLeave(id) { saveState(); newlyArrived.delete(id); breakMembers.delete(id); delete serialPlayCounts[id]; delete realPlayCounts[id]; var updated = []; for (var i = 0; i < currentMembers.length; i++) { if (currentMembers[i] !== id) { updated.push(currentMembers[i]); } } currentMembers = updated; updateUI(); savePersistentState(); }
         
         function toggleBreak(id) {
             saveState(); var targetId = Number(id);
@@ -106,7 +159,7 @@
                 breakMembers.add(targetId); newlyArrived.delete(targetId);
                 if (currentMatch && (currentMatch.p1 === targetId || currentMatch.p2 === targetId || currentMatch.p3 === targetId || currentMatch.p4 === targetId)) { currentMatch = null; restingPlayers = []; }
             }
-            updateUI();
+            updateUI(); savePersistentState();
         }
 
         function updateUI() {
@@ -140,6 +193,8 @@
                 for (var hIdx = pastMatches.length - 1; hIdx >= 0; hIdx--) { var h = pastMatches[hIdx], rowH = document.createElement('div'); rowH.style = 'padding:6px; background:#f8f9fa; border-left:4px solid var(--secondary); border-radius:0 6px 6px 0; font-size:13px;'; rowH.innerHTML = '<div style="font-weight:bold; color:var(--secondary);">第 ' + h.matchNumber + ' 試合</div><div>' + h.p1 + '番-' + h.p2 + '番 vs ' + h.p3 + '番-' + h.p4 + '番</div>'; histList.appendChild(rowH); }
             } else { document.getElementById('c-hist').style.display = 'none'; }
         }
+        window.addEventListener('DOMContentLoaded', function(){ restorePersistentState(); });
+
         function secureShuffle(array) { var copy = array.slice(); for (var i = copy.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), temp = copy[i]; copy[i] = copy[j]; copy[j] = temp; } return copy; }
         function getPairCount(p1, p2) { var count = 0; for (var i = 0; i < pairHistory.length; i++) { var h = pairHistory[i]; if ((h.concat().shift()===p1&&h.concat().pop()===p2)||(h.concat().shift()===p2&&h.concat().pop()===p1)) { count++; } } return count; }
         // 超平等組み合わせ自動計算アルゴリズム（1巡目王道固定 ＆ 試合数偏りブロック搭載）
@@ -293,7 +348,7 @@
 
             pairHistory.push([finalMatch.p1, finalMatch.p2]); pairHistory.push([finalMatch.p3, finalMatch.p4]);
             var active = [finalMatch.p1, finalMatch.p2, finalMatch.p3, finalMatch.p4], rests = []; for (var mIdx = 0; mIdx < currentMembers.length; mIdx++) { if (active.indexOf(currentMembers[mIdx]) === -1) { rests.push(currentMembers[mIdx]); } } restingPlayers = rests;
-            updateUI(); window.scrollTo({ top: 0, behavior: 'smooth' });
+            updateUI(); savePersistentState(); window.scrollTo({ top: 0, behavior: 'smooth' });
         }
     </script>
 </body>
