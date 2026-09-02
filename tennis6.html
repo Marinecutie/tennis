@@ -42,7 +42,7 @@
         <!-- 【画面2】メイン画面 -->
         <div id="v-main" style="display:none;">
             <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
-                <div><h4 id="txt-stay">滞在人数: 0人</h4><p style="font-size:11px; color:#888;">遅参・復帰者は次の1試合のみ最優先</p></div>
+                <div><h4 id="txt-stay">滞在: 0人</h4><p style="font-size:11px; color:#888;">遅参・復帰は次の1試合のみ最優先</p></div>
                 <button class="btn-arrival" onclick="onArrival()">👤 <span id="txt-next">7</span>番到着</button>
             </div>
             <div id="c-match" class="card" style="display:none;">
@@ -143,7 +143,7 @@
             var is4Multiple = (activeMembers.length % 4 === 0 && activeMembers.length > 0);
             var modeName = is4Multiple ? " ⚠️ " + activeMembers.length + "人専用シャッフルモード" : "";
             
-            document.getElementById('txt-stay').innerText = "滞在人数: " + currentMembers.length + "人 (稼働中: " + activeMembers.length + "人)" + modeName;
+            document.getElementById('txt-stay').innerText = "滞在: " + currentMembers.length + "人 (稼働: " + activeMembers.length + "人)" + modeName;
             document.getElementById('txt-next').innerText = nextNum;
             var btn = document.getElementById('btn-next'); btn.disabled = activeMembers.length < 4; btn.innerText = activeMembers.length < 4 ? "稼働人数が足りません(4人以上)" : "次の試合を決定";
             var undoBtn = document.getElementById('btn-undo'); if (undoBtn) { undoBtn.style.display = stateHistory.length > 0 ? 'block' : 'none'; }
