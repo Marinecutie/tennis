@@ -8,7 +8,7 @@
         :root { --primary:#2bc44a; --secondary:#1a73e8; --warning:#e67e22; --danger:#e74c3c; }
         * { box-sizing:border-box; margin:0; padding:0; font-family:-apple-system,sans-serif; }
         html, body { overscroll-behavior-y: none; }
-        body { background:#f4f6f8; color:#333; padding:15px; padding-bottom:20px; min-height:100vh; }
+        body { background:#f4f6f8; color:#333; padding:15px; padding-bottom:110px; }
         .card { background:white; border-radius:12px; padding:15px; margin-bottom:15px; box-shadow:0 2px 8px rgba(0,0,0,0.05); }
         .title { font-size:14px; font-weight:bold; color:#888; border-bottom:1px solid #eee; padding-bottom:4px; margin-bottom:10px; }
         .btn-circle { width:50px; height:50px; border-radius:50%; border:none; background:#e0e0e0; font-size:24px; font-weight:bold; }
@@ -17,7 +17,7 @@
         .badge { background:rgba(231,76,60,0.1); color:var(--danger); font-size:11px; font-weight:bold; padding:2px 6px; border-radius:4px; }
         .badge-break { background:rgba(136,136,136,0.1); color:#666; font-size:11px; font-weight:bold; padding:2px 6px; border-radius:4px; }
         .team { font-size:18px; font-weight:bold; width:45%; text-align:center; }
-        .footer { position:sticky; bottom:0; z-index:100; background:white; padding:12px 15px calc(12px + env(safe-area-inset-bottom)); margin:0 -15px; box-shadow:0 -2px 10px rgba(0,0,0,0.05); }
+        .footer { position:fixed; bottom:0; left:0; right:0; background:white; padding:12px 15px; box-shadow:0 -2px 10px rgba(0,0,0,0.05); }
         .btn-main { width:100%; background:var(--primary); color:white; border:none; padding:14px; border-radius:10px; font-size:18px; font-weight:bold; }
         .btn-main:disabled { background:#ccc; }
         .btn-action { border:none; background:none; font-weight:bold; font-size:14px; cursor:pointer; }
@@ -35,9 +35,7 @@
                 <span id="txt-init" style="font-size:48px; font-weight:bold; color:var(--secondary);">6</span><span style="font-size:20px; font-weight:bold;">人</span>
                 <button class="btn-circle" onclick="addNum(1)">+</button>
             </div>
-            <button class="btn-main" onclick="startApp()">新規ｽﾀｰﾄ（この人数で開始）</button>
-<button id="btn-resume" class="btn-main" style="display:none; background:var(--secondary); margin-top:10px;" onclick="resumeApp()">前回の続きから再開</button>
-<div id="resume-note" style="display:none; margin-top:10px; font-size:12px; color:#666;">前回のゲームデータが保存されています</div>
+            <button class="btn-main" onclick="startApp()">この人数でアプリを起動</button>
         </div>
         <!-- 【画面2】メイン画面 -->
         <div id="v-main" style="display:none;">
@@ -76,37 +74,10 @@
         function addNum(amt) { var n = initCount + amt; if (n >= 4 && n <= 40) { initCount = n; document.getElementById('txt-init').innerText = initCount; } }
         
         function startApp() {
-            // 新規スタート：前回の保存データを完全に消去
-            clearPersistentState();
-
             currentMembers = [];
-            nextNum = 1;
-            totalMatches = 0;
-            currentMatch = null;
-            restingPlayers = [];
-            newlyArrived = new Set();
-            playCounts = {};
-            pastMatches = [];
-            pairHistory = [];
-            stateHistory = [];
-            breakMembers = new Set();
-            realPlayCounts = {};
-            serialPlayCounts = {};
-
-            for (var i = 1; i <= initCount; i++) {
-                currentMembers.push(i);
-                playCounts[i] = 0;
-                realPlayCounts[i] = 0;
-                serialPlayCounts[i] = 0;
-            }
-
-            nextNum = initCount + 1;
-            document.getElementById('v-setup').style.display = 'none';
-            document.getElementById('v-main').style.display = 'block';
-            updateUI();
-            persistState();
+            for (var i = 1; i <= initCount; i++) { currentMembers.push(i); playCounts[i] = 0; realPlayCounts[i] = 0; serialPlayCounts[i] = 0; }
+            nextNum = initCount + 1; document.getElementById('v-setup').style.display = 'none'; document.getElementById('v-main').style.display = 'block'; stateHistory = []; breakMembers.clear(); updateUI();
         }
-
         function onArrival() {
             saveState();
 
@@ -120,8 +91,8 @@
                 counts.push(playCounts[activeMembers[i]] || 0);
             }
             var minC = counts.length > 0 ? Math.min.apply(null, counts) : 0;
- playCounts[nextNum] = minC; realPlayCounts[nextNum] = 0; serialPlayCounts[nextNum] = 0; currentMembers.push(nextNum); newlyArrived.add(nextNum); nextNum += 1; updateUI(); persistState(); }
-        function onLeave(id) { saveState(); newlyArrived.delete(id); breakMembers.delete(id); delete serialPlayCounts[id]; delete realPlayCounts[id]; var updated = []; for (var i = 0; i < currentMembers.length; i++) { if (currentMembers[i] !== id) { updated.push(currentMembers[i]); } } currentMembers = updated; updateUI(); persistState(); }
+ playCounts[nextNum] = minC; realPlayCounts[nextNum] = 0; serialPlayCounts[nextNum] = 0; currentMembers.push(nextNum); newlyArrived.add(nextNum); nextNum += 1; updateUI(); }
+        function onLeave(id) { saveState(); newlyArrived.delete(id); breakMembers.delete(id); delete serialPlayCounts[id]; delete realPlayCounts[id]; var updated = []; for (var i = 0; i < currentMembers.length; i++) { if (currentMembers[i] !== id) { updated.push(currentMembers[i]); } } currentMembers = updated; updateUI(); }
         
         function toggleBreak(id) {
             saveState(); var targetId = Number(id);
@@ -141,7 +112,7 @@
         function updateUI() {
             var activeMembers = currentMembers.filter(function(m) { return !breakMembers.has(m); });
             var is4Multiple = (activeMembers.length % 4 === 0 && activeMembers.length > 0);
-            var modeName = is4Multiple ? " ⚠️ " + activeMembers.length + "人用ｼｬｯﾌﾙﾓｰﾄﾞ" : "";
+            var modeName = is4Multiple ? " ⚠️ " + activeMembers.length + "人専用シャッフルモード" : "";
             
             document.getElementById('txt-stay').innerText = "滞在: " + currentMembers.length + "人 (稼働: " + activeMembers.length + "人)" + modeName;
             document.getElementById('txt-next').innerText = nextNum;
@@ -172,99 +143,6 @@
         function secureShuffle(array) { var copy = array.slice(); for (var i = copy.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), temp = copy[i]; copy[i] = copy[j]; copy[j] = temp; } return copy; }
         function getPairCount(p1, p2) { var count = 0; for (var i = 0; i < pairHistory.length; i++) { var h = pairHistory[i]; if ((h.concat().shift()===p1&&h.concat().pop()===p2)||(h.concat().shift()===p2&&h.concat().pop()===p1)) { count++; } } return count; }
         // 超平等組み合わせ自動計算アルゴリズム（1巡目王道固定 ＆ 試合数偏りブロック搭載）
-        // ===== ホーム画面ショートカットからの安全な再開 =====
-        // 起動直後に自動復元せず、初期画面で「前回の続きから再開」を
-        // ユーザーが押した時だけ復元することで、iPhone Safariの
-        // 初期化と復元処理の衝突によるフリーズを避けます。
-        var PERSIST_KEY = "tennis6_app_state_v3";
-
-        function persistState() {
-            try {
-                var data = {
-                    initCount: initCount,
-                    currentMembers: currentMembers.slice(),
-                    nextNum: nextNum,
-                    totalMatches: totalMatches,
-                    currentMatch: currentMatch ? Object.assign({}, currentMatch) : null,
-                    restingPlayers: restingPlayers.slice(),
-                    newlyArrived: Array.from(newlyArrived),
-                    playCounts: Object.assign({}, playCounts),
-                    pastMatches: JSON.parse(JSON.stringify(pastMatches)),
-                    pairHistory: JSON.parse(JSON.stringify(pairHistory)),
-                    breakMembers: Array.from(breakMembers),
-                    realPlayCounts: Object.assign({}, realPlayCounts),
-                    serialPlayCounts: Object.assign({}, serialPlayCounts)
-                };
-                localStorage.setItem(PERSIST_KEY, JSON.stringify(data));
-            } catch (e) {}
-        }
-
-        function hasPersistentState() {
-            try {
-                var raw = localStorage.getItem(PERSIST_KEY);
-                if (!raw) return false;
-                var p = JSON.parse(raw);
-                return !!(p && Array.isArray(p.currentMembers) && p.currentMembers.length > 0);
-            } catch (e) {
-                return false;
-            }
-        }
-
-        function restorePersistentState() {
-            try {
-                var raw = localStorage.getItem(PERSIST_KEY);
-                if (!raw) return false;
-                var p = JSON.parse(raw);
-                if (!p || !Array.isArray(p.currentMembers) || p.currentMembers.length === 0) return false;
-
-                initCount = Number(p.initCount) || 6;
-                currentMembers = p.currentMembers;
-                nextNum = Number(p.nextNum) || (Math.max.apply(null, currentMembers) + 1);
-                totalMatches = Number(p.totalMatches) || 0;
-                currentMatch = p.currentMatch || null;
-                restingPlayers = Array.isArray(p.restingPlayers) ? p.restingPlayers : [];
-                newlyArrived = new Set(Array.isArray(p.newlyArrived) ? p.newlyArrived : []);
-                playCounts = p.playCounts || {};
-                pastMatches = Array.isArray(p.pastMatches) ? p.pastMatches : [];
-                pairHistory = Array.isArray(p.pairHistory) ? p.pairHistory : [];
-                breakMembers = new Set(Array.isArray(p.breakMembers) ? p.breakMembers : []);
-                realPlayCounts = p.realPlayCounts || {};
-                serialPlayCounts = p.serialPlayCounts || {};
-
-                document.getElementById('txt-init').innerText = initCount;
-                document.getElementById('v-setup').style.display = 'none';
-                document.getElementById('v-main').style.display = 'block';
-                stateHistory = [];
-                updateUI();
-                return true;
-            } catch (e) {
-                return false;
-            }
-        }
-
-        function resumeApp() {
-            if (!restorePersistentState()) {
-                alert("前回のゲームデータを読み込めませんでした。新規スタートしてください。");
-            }
-        }
-
-        function clearPersistentState() {
-            try { localStorage.removeItem(PERSIST_KEY); } catch (e) {}
-        }
-
-        // 起動時はゲームを復元しない。保存データがあれば再開ボタンだけ表示。
-        window.addEventListener('load', function() {
-            setTimeout(function() {
-                try {
-                    var hasData = hasPersistentState();
-                    var btn = document.getElementById('btn-resume');
-                    var note = document.getElementById('resume-note');
-                    if (btn) btn.style.display = hasData ? 'block' : 'none';
-                    if (note) note.style.display = hasData ? 'block' : 'none';
-                } catch (e) {}
-            }, 0);
-        });
-
         function drawMatch() {
             var activeMembers = currentMembers.filter(function(m) { return !breakMembers.has(m); });
             if (activeMembers.length < 4) return;
@@ -415,7 +293,7 @@
 
             pairHistory.push([finalMatch.p1, finalMatch.p2]); pairHistory.push([finalMatch.p3, finalMatch.p4]);
             var active = [finalMatch.p1, finalMatch.p2, finalMatch.p3, finalMatch.p4], rests = []; for (var mIdx = 0; mIdx < currentMembers.length; mIdx++) { if (active.indexOf(currentMembers[mIdx]) === -1) { rests.push(currentMembers[mIdx]); } } restingPlayers = rests;
-            updateUI(); persistState();
+            updateUI(); window.scrollTo({ top: 0, behavior: 'smooth' });
         }
     </script>
 </body>
