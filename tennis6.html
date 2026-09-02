@@ -8,7 +8,7 @@
         :root { --primary:#2bc44a; --secondary:#1a73e8; --warning:#e67e22; --danger:#e74c3c; }
         * { box-sizing:border-box; margin:0; padding:0; font-family:-apple-system,sans-serif; }
         html, body { overscroll-behavior-y: none; }
-        body { background:#f4f6f8; color:#333; padding:15px; padding-bottom:20px; min-height:100vh; }
+        body { background:#f4f6f8; color:#333; padding:15px; padding-bottom:40px; min-height:100vh; }
         .card { background:white; border-radius:12px; padding:15px; margin-bottom:15px; box-shadow:0 2px 8px rgba(0,0,0,0.05); }
         .title { font-size:14px; font-weight:bold; color:#888; border-bottom:1px solid #eee; padding-bottom:4px; margin-bottom:10px; }
         .btn-circle { width:50px; height:50px; border-radius:50%; border:none; background:#e0e0e0; font-size:24px; font-weight:bold; }
@@ -17,7 +17,14 @@
         .badge { background:rgba(231,76,60,0.1); color:var(--danger); font-size:11px; font-weight:bold; padding:2px 6px; border-radius:4px; }
         .badge-break { background:rgba(136,136,136,0.1); color:#666; font-size:11px; font-weight:bold; padding:2px 6px; border-radius:4px; }
         .team { font-size:18px; font-weight:bold; width:45%; text-align:center; }
-        .footer { position:sticky; bottom:0; z-index:100; background:white; padding:12px 15px calc(12px + env(safe-area-inset-bottom)); margin:0 -15px; box-shadow:0 -2px 10px rgba(0,0,0,0.05); }
+        .footer {
+            position: static;
+            z-index: auto;
+            background: white;
+            padding: 12px 15px calc(12px + env(safe-area-inset-bottom));
+            margin: 0 -15px;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+        }
         .btn-main { width:100%; background:var(--primary); color:white; border:none; padding:14px; border-radius:10px; font-size:18px; font-weight:bold; }
         .btn-main:disabled { background:#ccc; }
         .btn-action { border:none; background:none; font-weight:bold; font-size:14px; cursor:pointer; }
@@ -42,7 +49,7 @@
         <!-- 【画面2】メイン画面 -->
         <div id="v-main" style="display:none;">
             <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
-                <div><h4 id="txt-stay">滞在: 0人</h4><p style="font-size:11px; color:#888;">遅参・復帰は次の1試合のみ最優先</p></div>
+                <div><h4 id="txt-stay">滞在人数: 0人</h4><p style="font-size:11px; color:#888;">遅参・復帰者は次の1試合のみ最優先</p></div>
                 <button class="btn-arrival" onclick="onArrival()">👤 <span id="txt-next">7</span>番到着</button>
             </div>
             <div id="c-match" class="card" style="display:none;">
@@ -51,7 +58,7 @@
                 <div style="display:flex; justify-content:space-between; align-items:center;"><div id="t1" class="team"></div><div style="color:#888; font-weight:bold;">vs</div><div id="t2" class="team"></div></div>
             </div>
             <div id="c-rest" class="card" style="display:none;"><div class="title">今回のお休み</div><div id="txt-rest" style="font-size:16px; font-weight:bold; color:var(--warning);"></div></div>
-            <div class="card"><div class="title">メンバー一覧（黄＝実試合数/灰＝調整）</div><div id="l-member"></div></div>
+            <div class="card"><div class="title">メンバー一覧（黄＝実試合数/灰＝計算用）</div><div id="l-member"></div></div>
             <div id="c-hist" class="card" style="display:none;"><div class="title">過去の対戦履歴</div><div id="l-hist" style="max-height:180px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;"></div></div>
             <div class="footer">
                 <button id="btn-undo" class="btn-action" style="width:100%; background:var(--warning); color:white; border:none; padding:8px; border-radius:8px; font-size:14px; font-weight:bold; margin-bottom:8px; display:none;" onclick="undoAction()">↩️ 1手前に戻す</button>
@@ -141,7 +148,7 @@
         function updateUI() {
             var activeMembers = currentMembers.filter(function(m) { return !breakMembers.has(m); });
             var is4Multiple = (activeMembers.length % 4 === 0 && activeMembers.length > 0);
-            var modeName = is4Multiple ? " ⚠️ " + activeMembers.length + "人専用シャッフルモード" : "";
+            var modeName = is4Multiple ? " ⚠️ " + activeMembers.length + "人用ｼｬｯﾌﾙﾓｰﾄﾞ" : "";
             
             document.getElementById('txt-stay').innerText = "滞在: " + currentMembers.length + "人 (稼働: " + activeMembers.length + "人)" + modeName;
             document.getElementById('txt-next').innerText = nextNum;
