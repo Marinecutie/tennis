@@ -27,7 +27,6 @@
 <body>
     <div style="text-align:center; margin-bottom:20px;"><h2>🎾 テニス乱数表 (1面版)</h2></div>
     <div id="app">
-        <!-- 【画面1】初期設定画面 -->
         <div id="v-setup" class="card" style="text-align:center; padding:40px 15px;">
             <h3 style="margin-bottom:20px;">初期メンバーの人数を設定</h3>
             <div style="display:flex; justify-content:center; align-items:center; gap:30px; margin-bottom:30px;">
@@ -36,10 +35,9 @@
                 <button class="btn-circle" onclick="addNum(1)">+</button>
             </div>
             <button class="btn-main" onclick="startApp()">新規ｽﾀｰﾄ（この人数で開始）</button>
-<button id="btn-resume" class="btn-main" style="display:none; background:var(--secondary); margin-top:10px;" onclick="resumeApp()">前回の続きから再開</button>
-<div id="resume-note" style="display:none; margin-top:10px; font-size:12px; color:#666;">前回のゲームデータが保存されています</div>
+            <button id="btn-resume" class="btn-main" style="display:none; background:var(--secondary); margin-top:10px;" onclick="resumeApp()">前回の続きから再開</button>
+            <div id="resume-note" style="display:none; margin-top:10px; font-size:12px; color:#666;">前回のゲームデータが保存されています</div>
         </div>
-        <!-- 【画面2】メイン画面 -->
         <div id="v-main" style="display:none;">
             <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
                 <div><h4 id="txt-stay">滞在人数: 0人</h4><p style="font-size:11px; color:#888;">遅参・復帰者は次の1試合のみ最優先</p></div>
@@ -76,7 +74,6 @@
         function addNum(amt) { var n = initCount + amt; if (n >= 4 && n <= 40) { initCount = n; document.getElementById('txt-init').innerText = initCount; } }
         
         function startApp() {
-            // 新規スタート：前回の保存データを完全に消去
             clearPersistentState();
 
             currentMembers = [];
@@ -110,8 +107,6 @@
         function onArrival() {
             saveState();
 
-            // 遅参者の調整試合数は「現在稼働中」のメンバーだけを基準にする。
-            // 中座中のメンバーは最少値の計算から除外する。
             var activeMembers = currentMembers.filter(function(m) {
                 return !breakMembers.has(m);
             });
@@ -120,7 +115,8 @@
                 counts.push(playCounts[activeMembers[i]] || 0);
             }
             var minC = counts.length > 0 ? Math.min.apply(null, counts) : 0;
- playCounts[nextNum] = minC; realPlayCounts[nextNum] = 0; serialPlayCounts[nextNum] = 0; currentMembers.push(nextNum); newlyArrived.add(nextNum); nextNum += 1; updateUI(); persistState(); }
+            playCounts[nextNum] = minC; realPlayCounts[nextNum] = 0; serialPlayCounts[nextNum] = 0; currentMembers.push(nextNum); newlyArrived.add(nextNum); nextNum += 1; updateUI(); persistState();
+        }
         function onLeave(id) { saveState(); newlyArrived.delete(id); breakMembers.delete(id); delete serialPlayCounts[id]; delete realPlayCounts[id]; var updated = []; for (var i = 0; i < currentMembers.length; i++) { if (currentMembers[i] !== id) { updated.push(currentMembers[i]); } } currentMembers = updated; updateUI(); persistState(); }
         
         function toggleBreak(id) {
@@ -171,11 +167,7 @@
         }
         function secureShuffle(array) { var copy = array.slice(); for (var i = copy.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), temp = copy[i]; copy[i] = copy[j]; copy[j] = temp; } return copy; }
         function getPairCount(p1, p2) { var count = 0; for (var i = 0; i < pairHistory.length; i++) { var h = pairHistory[i]; if ((h.concat().shift()===p1&&h.concat().pop()===p2)||(h.concat().shift()===p2&&h.concat().pop()===p1)) { count++; } } return count; }
-        // 超平等組み合わせ自動計算アルゴリズム（1巡目王道固定 ＆ 試合数偏りブロック搭載）
-        // ===== ホーム画面ショートカットからの安全な再開 =====
-        // 起動直後に自動復元せず、初期画面で「前回の続きから再開」を
-        // ユーザーが押した時だけ復元することで、iPhone Safariの
-        // 初期化と復元処理の衝突によるフリーズを避けます。
+
         var PERSIST_KEY = "tennis6_app_state_v3";
 
         function persistState() {
@@ -252,7 +244,6 @@
             try { localStorage.removeItem(PERSIST_KEY); } catch (e) {}
         }
 
-        // 起動時はゲームを復元しない。保存データがあれば再開ボタンだけ表示。
         window.addEventListener('load', function() {
             setTimeout(function() {
                 try {
@@ -273,8 +264,8 @@
             var zeroMatchPlayers = activeMembers.filter(function(m) { return (playCounts[m] || 0) === 0; });
             var is4Multiple = (activeMembers.length % 4 === 0);
 
-            // 💡 【ルール①】まだ1回も出ていない人が4人以上いる間は、背番号の若い順に4人ずつ王道固定
-            if (is4Multiple && zeroMatchPlayers.length >= 4) {
+            // 💡 【修正点】まだ1回も出ていない稼働中メンバーが4人以上いる間は、背番号順に王道固定（中座・遅参に左右されない）
+            if (zeroMatchPlayers.length >= 4) {
                 var sortedZeroPlayers = zeroMatchPlayers.slice().sort(function(a, b) { return a - b; });
                 var p1 = sortedZeroPlayers[0];
                 var p2 = sortedZeroPlayers[1];
@@ -282,15 +273,12 @@
                 var p4 = sortedZeroPlayers[3];
                 finalMatch = { matchNumber: totalMatches, p1: p1, p2: p2, p3: p3, p4: p4 };
                 newlyArrived.delete(p1); newlyArrived.delete(p2); newlyArrived.delete(p3); newlyArrived.delete(p4);
-            } else if (totalMatches === 1) {
-                finalMatch = { matchNumber: 1, p1: 1, p2: 2, p3: 3, p4: 4 };
-                newlyArrived.delete(1); newlyArrived.delete(2); newlyArrived.delete(3); newlyArrived.delete(4);
             } else {
                 var selected = [];
 
                 if (is4Multiple) {
                     // 🔥 【4の倍数専用シャッフルモード】
-                    var maxAttempts = 500; // 厳格な条件を満たすため最大500回超高速で再抽選します
+                    var maxAttempts = 500;
                     var success = false;
 
                     for (var attempt = 0; attempt < maxAttempts; attempt++) {
@@ -300,13 +288,13 @@
                         } else if (activeMembers.length === 8) {
                             pool = secureShuffle(activeMembers);
                         } else {
-                            // 12人以上の時は、直前にプレイした4人を除いた「残りの待機組」から優先してシャッフル
                             var lastPlayed = new Set(restingPlayers.length > 0 ? currentMembers.filter(function(m) { return restingPlayers.indexOf(m) === -1 && !breakMembers.has(m); }) : []);
                             var benched = activeMembers.filter(function(m) { return !lastPlayed.has(m); });
                             pool = secureShuffle(benched).concat(secureShuffle(activeMembers.filter(function(m) { return lastPlayed.has(m); })));
                         }
 
                         var currentSelected = [];
+                        // 修正：全員が一巡済みの場面でのみ遅参者を優先選出
                         var arrivals = activeMembers.filter(function(m) { return newlyArrived.has(m); });
                         for (var aI = 0; aI < arrivals.length; aI++) {
                             if (currentSelected.length < 4) {
@@ -318,7 +306,6 @@
                             currentSelected.push(pool.shift());
                         }
 
-                        // 🚨 1. 連続試合数（連投ストッパー）の検証
                         var isViolated = false;
                         for (var s = 0; s < currentSelected.length; s++) {
                             var pNum = currentSelected[s];
@@ -327,7 +314,6 @@
                             if (activeMembers.length >= 12 && currentSerial >= 1) { isViolated = true; break; }
                         }
 
-                        // 🚨 2. 調整試合数の「偏りブロック」検証
                         if (!isViolated) {
                             var tempCounts = {};
                             for (var k = 0; k < activeMembers.length; k++) {
@@ -340,11 +326,7 @@
                             var maxC = Math.max.apply(null, values);
                             var minC = Math.min.apply(null, values);
                             
-                            if (activeMembers.length === 8) {
-                                // 8人の時：試合数の差が「2以上」開いてしまう組み合わせなら却下（1回差以内に抑える）
-                                if ((maxC - minC) >= 2) { isViolated = true; }
-                            } else if (activeMembers.length >= 12) {
-                                // 💡 【ご要望ルール】12人以上の時：試合数の差が「2以上」開いてしまう組み合わせなら却下（1回差以内に抑える）
+                            if (activeMembers.length === 8 || activeMembers.length >= 12) {
                                 if ((maxC - minC) >= 2) { isViolated = true; }
                             }
                         }
@@ -362,7 +344,7 @@
                     }
 
                 } else {
-                    // 🍃 【4の倍数以外のとき】いつもの超平等ロジック
+                    // 🍃 【4の倍数以外のとき】
                     var candidates = secureShuffle(activeMembers).sort(function(a, b) {
                         var hasZeroMatch = activeMembers.some(function(m) { return (playCounts[m] || 0) === 0; });
                         if (hasZeroMatch) {
