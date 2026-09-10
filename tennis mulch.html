@@ -6,8 +6,14 @@
     <style>
         :root { --primary:#2bc44a; --secondary:#1a73e8; --warning:#e67e22; --danger:#e74c3c; }
         * { box-sizing:border-box; margin:0; padding:0; font-family:-apple-system,sans-serif; }
-        html, body { overscroll-behavior-y: none; }
-        body { background:#f4f6f8; color:#333; padding:15px; padding-bottom:70px; }
+        html, body {
+            background:#f4f6f8; 
+            color:#333; 
+            padding:15px; 
+            padding-bottom:70px;
+            /* スマホの引っ張って更新（プルダウンリロード）を防止 */
+            overscroll-behavior-y: none;
+        }
         .card { background:white; border-radius:12px; padding:15px; margin-bottom:15px; box-shadow:0 2px 8px rgba(0,0,0,0.05); }
         .title { font-size:14px; font-weight:bold; color:#888; border-bottom:1px solid #eee; padding-bottom:4px; margin-bottom:10px; }
         .btn-circle { width:45px; height:45px; border-radius:50%; border:none; background:#e0e0e0; font-size:20px; font-weight:bold; cursor:pointer; }
@@ -37,7 +43,7 @@
                 <p style="font-size:14px; color:#888; margin-bottom:10px;">使用するコート数</p>
                 <div style="display:flex; justify-content:center; align-items:center; gap:20px;">
                     <button class="btn-circle" onclick="addCt(-1)">−</button>
-                    <span id="txt-ct" style="font-size:36px; font-weight:bold; color:var(--primary);">2</span><span style="font-size:16px; font-weight:bold;">面</span>
+                    <span id="txt-ct" style="font-size:36px; font-weight:bold; color:var(--primary);">3</span><span style="font-size:16px; font-weight:bold;">面</span>
                     <button class="btn-circle" onclick="addCt(1)">+</button>
                 </div>
             </div>
@@ -98,11 +104,12 @@
     </div>
 
     <script>
-        var maxCourts = 2, initCount = 8, currentMembers = [], nextNum = 1, totalMatches = 0;
+        var maxCourts = 3, initCount = 8, currentMembers = [], nextNum = 1, totalMatches = 0;
         var courtStates = {}, playCounts = {}, pastMatches = [], pairHistory = [], stateHistory = [];
         var newlyArrived = new Set(), lastPlayedPlayers = new Set();
-        var courtPendingAsk = {};     // 連続・重複検知でY/N選択待ち状態
-        var courtWaitNext = {};       // 一時待機（他コート終了待ち）状態
+        var courtPendingAsk = {};     
+        var courtWaitNext = {};       
+        var declinedFours = [];       // Nが選ばれた組み合わせを一時記憶し、再提案を防ぐ
 
         function saveState() {
             stateHistory.push({
@@ -111,7 +118,8 @@
                 pastMatches: JSON.parse(JSON.stringify(pastMatches)), pairHistory: JSON.parse(JSON.stringify(pairHistory)),
                 newlyArrived: new Set(newlyArrived), lastPlayedPlayers: new Set(lastPlayedPlayers),
                 courtPendingAsk: JSON.parse(JSON.stringify(courtPendingAsk)),
-                courtWaitNext: Object.assign({}, courtWaitNext)
+                courtWaitNext: Object.assign({}, courtWaitNext),
+                declinedFours: JSON.parse(JSON.stringify(declinedFours))
             });
             if (stateHistory.length > 5) { stateHistory.shift(); }
         }
@@ -122,7 +130,7 @@
             currentMembers = p.currentMembers; nextNum = p.nextNum; totalMatches = p.totalMatches;
             courtStates = p.courtStates; playCounts = p.playCounts; pastMatches = p.pastMatches;
             pairHistory = p.pairHistory; newlyArrived = p.newlyArrived; lastPlayedPlayers = p.lastPlayedPlayers;
-            courtPendingAsk = p.courtPendingAsk; courtWaitNext = p.courtWaitNext;
+            courtPendingAsk = p.courtPendingAsk; courtWaitNext = p.courtWaitNext; declinedFours = p.declinedFours;
             updateUI();
         }
 
@@ -140,7 +148,7 @@
             currentMembers = [];
             for (var i = 1; i <= initCount; i++) { currentMembers.push(i); playCounts[i] = 0; }
             nextNum = initCount + 1;
-            courtStates = {}; courtPendingAsk = {}; courtWaitNext = {};
+            courtStates = {}; courtPendingAsk = {}; courtWaitNext = {}; declinedFours = [];
             for (var c = 1; c <= maxCourts; c++) { 
                 courtStates[c] = null; 
                 courtWaitNext[c] = false;
@@ -150,9 +158,7 @@
             document.getElementById('v-main').style.display = 'block';
             stateHistory = [];
 
-            for (var c = 1; c <= maxCourts; c++) {
-                if (getAvailablePlayersForCourt().length >= 4) { assignNextMatch(c, true, false); }
-            }
+            checkAndAssignMatches();
             updateUI();
         }
 
@@ -177,18 +183,35 @@
             for (var c = 1; c <= maxCourts; c++) {
                 var match = courtStates[c];
                 if (match && (match.p1 === id || match.p2 === id || match.p3 === id || match.p4 === id)) { courtStates[c] = null; }
+                delete courtPendingAsk[c];
+                courtWaitNext[c] = false;
             }
             checkAndAssignMatches();
             updateUI();
         }
 
+        function getEffectiveMaxCourts() {
+            var requiredByMembers = Math.floor(currentMembers.length / 4);
+            return Math.min(maxCourts, Math.max(1, requiredByMembers));
+        }
+
         function getAvailablePlayersForCourt() {
-            var activeActive = [];
-            for (var c = 1; c <= maxCourts; c++) {
+            var busyPlayers = [];
+            var effCourts = getEffectiveMaxCourts();
+            for (var c = 1; c <= effCourts; c++) {
                 var m = courtStates[c];
-                if (m) { activeActive.push(m.p1, m.p2, m.p3, m.p4); }
+                if (m) { 
+                    busyPlayers.push(m.p1, m.p2, m.p3, m.p4); 
+                } else if (courtPendingAsk[c]) {
+                    var p = courtPendingAsk[c].players;
+                    if (p) {
+                        for (var k = 0; k < p.length; k++) { busyPlayers.push(p[k]); }
+                    }
+                } else if (courtWaitNext[c]) {
+                    // 待機中コートのプレイヤーはまだフリーではない（次の全体再割り当てまで保持）
+                }
             }
-            return currentMembers.filter(function(m) { return activeActive.indexOf(m) === -1; });
+            return currentMembers.filter(function(m) { return busyPlayers.indexOf(m) === -1; });
         }
 
         function getPairCount(p1, p2) {
@@ -213,11 +236,32 @@
                 var pm = pastMatches[i];
                 if (isSameFour(candidatePlayers, [pm.p1, pm.p2, pm.p3, pm.p4])) return true;
             }
-            for (var c = 1; c <= maxCourts; c++) {
+            for (var i = 0; i < declinedFours.length; i++) {
+                if (isSameFour(candidatePlayers, declinedFours[i])) return true;
+            }
+            var effCourts = getEffectiveMaxCourts();
+            for (var c = 1; c <= effCourts; c++) {
                 var cm = courtStates[c];
                 if (cm && isSameFour(candidatePlayers, [cm.p1, cm.p2, cm.p3, cm.p4])) return true;
+                var cp = courtPendingAsk[c];
+                if (cp && isSameFour(candidatePlayers, cp.players)) return true;
             }
             return false;
+        }
+
+        function shouldCheckYN() {
+            var total = currentMembers.length;
+            var allowedCounts = [];
+            if (maxCourts === 1) {
+                return total >= 5;
+            } else if (maxCourts === 2) {
+                allowedCounts = [4, 8, 12];
+            } else if (maxCourts === 3) {
+                allowedCounts = [4, 8, 12, 16];
+            } else if (maxCourts === 4) {
+                allowedCounts = [4, 8, 12, 16, 20];
+            }
+            return allowedCounts.indexOf(total) !== -1;
         }
 
         function isFirstRoundCompleted() {
@@ -230,7 +274,7 @@
             return true;
         }
 
-        function calculateNextCandidate(availableList, courtNum, isFirstGlobalMatch, avoidDuplicateFour) {
+        function calculateNextCandidate(availableList, courtNum) {
             if (availableList.length < 4) return null;
 
             var firstRoundDone = isFirstRoundCompleted();
@@ -258,27 +302,26 @@
                 return a - b;
             });
 
+            // 重複していない4人の組み合わせを探す
             var selected = candidates.slice(0, 4);
+            var foundAlt = false;
 
-            if (avoidDuplicateFour && candidates.length >= 4) {
-                var foundAlt = false;
-                for (var i = 0; i < candidates.length - 3; i++) {
-                    for (var j = i + 1; j < candidates.length - 2; j++) {
-                        for (var k = j + 1; k < candidates.length - 1; k++) {
-                            for (var l = k + 1; l < candidates.length; l++) {
-                                var testFour = [candidates[i], candidates[j], candidates[k], candidates[l]];
-                                if (!isAlreadyPlayedFour(testFour)) {
-                                    selected = testFour;
-                                    foundAlt = true;
-                                    break;
-                                }
+            for (var i = 0; i < candidates.length - 3; i++) {
+                for (var j = i + 1; j < candidates.length - 2; j++) {
+                    for (var k = j + 1; k < candidates.length - 1; k++) {
+                        for (var l = k + 1; l < candidates.length; l++) {
+                            var testFour = [candidates[i], candidates[j], candidates[k], candidates[l]];
+                            if (!isAlreadyPlayedFour(testFour)) {
+                                selected = testFour;
+                                foundAlt = true;
+                                break;
                             }
-                            if (foundAlt) break;
                         }
                         if (foundAlt) break;
                     }
                     if (foundAlt) break;
                 }
+                if (foundAlt) break;
             }
 
             var cp1 = selected[0], cp2 = selected[1], cp3 = selected[2], cp4 = selected[3];
@@ -319,105 +362,62 @@
             pairHistory.push([finalMatch.p3, finalMatch.p4]);
         }
 
-        function assignNextMatch(courtNum, isFirstGlobalMatch, forceBypassCheck, avoidDuplicate) {
-            var available = getAvailablePlayersForCourt();
-            if (available.length < 4) return false;
+        function checkAndAssignMatches() {
+            var effCourts = getEffectiveMaxCourts();
 
-            var bestMatch = calculateNextCandidate(available, courtNum, isFirstGlobalMatch, avoidDuplicate);
-            if (!bestMatch) return false;
-
-            if (!forceBypassCheck && isAlreadyPlayedFour(bestMatch.players)) {
-                courtPendingAsk[courtNum] = bestMatch;
-                return false;
+            for (var c = effCourts + 1; c <= maxCourts; c++) {
+                delete courtPendingAsk[c];
+                courtWaitNext[c] = false;
+                courtStates[c] = null;
             }
 
-            applyMatch(courtNum, bestMatch);
-            return true;
-        }
+            // 待機中コートがある場合は、他のすべてのコートが終了するまで新規割り当てを行わない
+            var hasWaitingCourt = false;
+            for (var c = 1; c <= effCourts; c++) {
+                if (courtWaitNext[c]) { hasWaitingCourt = true; break; }
+            }
+            if (hasWaitingCourt) return;
 
-        function assignTwoCourts(cA, cB) {
-            var available = getAvailablePlayersForCourt();
-            if (available.length < 8) return;
+            // 空いていて、かつまだY/N待ちになっていないコートに対して順次割り当てを試みる
+            for (var c = 1; c <= effCourts; c++) {
+                if (!courtStates[c] && !courtPendingAsk[c] && !courtWaitNext[c]) {
+                    var available = getAvailablePlayersForCourt();
+                    if (available.length < 4) break;
 
-            var validCombinationFound = false;
-            var cAMatch = null, cBMatch = null;
+                    var bestMatch = calculateNextCandidate(available, c);
+                    if (!bestMatch) break;
 
-            for (var attempt = 0; attempt < 50; attempt++) {
-                var shuffled = secureShuffle(available);
-                var gA = shuffled.slice(0, 4);
-                var gB = shuffled.slice(4, 8);
-
-                var cASame = isAlreadyPlayedFour(gA);
-                var cBSame = isAlreadyPlayedFour(gB);
-
-                if (!cASame && !cBSame) {
-                    cAMatch = calculateNextCandidate(gA, cA, false, false);
-                    cBMatch = calculateNextCandidate(gB, cB, false, false);
-                    validCombinationFound = true;
-                    break;
+                    // すでに過去にプレイ済みの4人かつ人数制限的にY/N確認が必要な場合
+                    if (shouldCheckYN() && isAlreadyPlayedFour(bestMatch.players)) {
+                        courtPendingAsk[c] = bestMatch;
+                    } else {
+                        applyMatch(c, bestMatch);
+                    }
                 }
-            }
-
-            if (validCombinationFound && cAMatch && cBMatch) {
-                applyMatch(cA, cAMatch);
-                applyMatch(cB, cBMatch);
-            } else {
-                assignNextMatch(cA, false, true, false);
-                assignNextMatch(cB, false, true, false);
             }
         }
 
         function answerY(courtNum) {
             saveState();
-            assignNextMatch(courtNum, false, true, false);
+            var pending = courtPendingAsk[courtNum];
+            if (pending) {
+                applyMatch(courtNum, pending);
+            }
+            checkAndAssignMatches();
             updateUI();
         }
 
         function answerN(courtNum) {
             saveState();
+            var pending = courtPendingAsk[courtNum];
+            if (pending) {
+                declinedFours.push(pending.players);
+            }
             delete courtPendingAsk[courtNum];
-
-            // 条件判断: 「総人数 ＝ 選択コート数 × 4」のピッタリケースかどうか
-            var isExactMatch = (currentMembers.length === maxCourts * 4);
-
-            if (isExactMatch && maxCourts >= 2) {
-                // ピッタリ人数の場合は「一旦空ける（待機）」をセットし、他コートの終了を待つ
-                courtWaitNext[courtNum] = true;
-            } else {
-                // ベンチメンバーがいる場合（1面8人など）は、後突っ込み優先で即時別組み合わせをセット
-                var assigned = assignNextMatch(courtNum, false, false, true);
-                if (!assigned) {
-                    assignNextMatch(courtNum, false, true, false);
-                }
-            }
+            courtWaitNext[courtNum] = true; // このコートは一旦空けて他コートの終了を待つ
+            
+            checkAndAssignMatches();
             updateUI();
-        }
-
-        function checkAndAssignMatches() {
-            var waitingCourts = [];
-            var availableCourts = [];
-
-            for (var c = 1; c <= maxCourts; c++) {
-                if (!courtStates[c]) {
-                    availableCourts.push(c);
-                    if (courtWaitNext[c]) { waitingCourts.push(c); }
-                }
-            }
-
-            // 待機中コートがあり、全コートが空いたら8人以上を一括シャッフルで両コート同時にセット
-            if (waitingCourts.length > 0 && availableCourts.length >= 2) {
-                var availablePlayers = getAvailablePlayersForCourt();
-                if (availablePlayers.length >= 8) {
-                    assignTwoCourts(availableCourts[0], availableCourts[1]);
-                    return;
-                }
-            }
-
-            for (var c = 1; c <= maxCourts; c++) {
-                if (!courtStates[c] && !courtPendingAsk[c] && !courtWaitNext[c]) {
-                    assignNextMatch(c, false, false, false);
-                }
-            }
         }
 
         function finishCourt(courtNum) {
@@ -431,6 +431,12 @@
 
             courtStates[courtNum] = null;
 
+            // 任意のコートが終了したら、全ての待機フラグを一斉に解除して全メンバーで再振り分けを走らせる
+            var effCourts = getEffectiveMaxCourts();
+            for (var c = 1; c <= effCourts; c++) {
+                courtWaitNext[c] = false;
+            }
+
             checkAndAssignMatches();
             updateUI();
         }
@@ -442,36 +448,41 @@
             var undoBtn = document.getElementById('btn-undo');
             if (undoBtn) { undoBtn.style.display = stateHistory.length > 0 ? 'block' : 'none'; }
 
-            // ① 進行中の各コート表示
+            var effCourts = getEffectiveMaxCourts();
+
             var courtsContainer = document.getElementById('l-courts');
             courtsContainer.innerHTML = '';
             for (var c = 1; c <= maxCourts; c++) {
                 var box = document.createElement('div');
                 box.className = 'card';
-                box.style = 'border-left:6px solid var(--primary); padding:10px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;';
                 
                 var m = courtStates[c];
-                if (m) {
+                if (c > effCourts) {
+                    box.style = 'border-left:6px solid #ddd; padding:10px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; opacity:0.5;';
+                    box.innerHTML = '<div style="width:100%;"><div style="font-size:12px; font-weight:bold; color:#aaa; margin-bottom:4px;">第 ' + c + ' コート</div><div style="color:#aaa; font-style:italic;">（人数不足のため今回は未使用）</div></div>';
+                } else if (m) {
+                    box.style = 'border-left:6px solid var(--primary); padding:10px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;';
                     box.innerHTML = '<div><div style="font-size:12px; font-weight:bold; color:var(--primary); margin-bottom:4px;">第 ' + c + ' コート (第 ' + m.matchNumber + ' 試合)</div><div class="team-text">' + m.p1 + '番 & ' + m.p2 + '番 <span style="font-size:12px; color:#888; font-weight:normal;">vs</span> ' + m.p3 + '番 & ' + m.p4 + '番</div></div><button class="btn-finish" onclick="finishCourt(' + c + ')">試合終了</button>';
                 } else if (courtPendingAsk[c]) {
+                    box.style = 'border-left:6px solid var(--warning); padding:10px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;';
                     box.innerHTML = '<div style="width:100%;"><div style="font-size:12px; font-weight:bold; color:var(--warning); margin-bottom:4px;">第 ' + c + ' コート</div><div class="alert-block">⚠️ 過去に実施したのと同じ4人の組み合わせ（面子）を検知しました。<br><button class="btn-yn btn-y" onclick="answerY(' + c + ')">Ｙ（この4人で続ける）</button><button class="btn-yn btn-n" onclick="answerN(' + c + ')">Ｎ（一旦空ける・後で再振り分け）</button></div></div>';
                 } else if (courtWaitNext[c]) {
-                    box.innerHTML = '<div style="width:100%;"><div style="font-size:12px; font-weight:bold; color:#aaa; margin-bottom:4px;">第 ' + c + ' コート</div><div style="color:#aaa; font-style:italic;">待機中（一時停止中）</div><div class="alert-block" style="background:#eef5fe; border-color:#c6dcfb; color:#1a73e8;">組合せの固定化を防止するため、次の試合までコートを一旦空けます。<br>他コート終了後に全メンバーで再振り分けを行います。</div></div>';
+                    box.style = 'border-left:6px solid var(--secondary); padding:10px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;';
+                    box.innerHTML = '<div style="width:100%;"><div style="font-size:12px; font-weight:bold; color:var(--secondary); margin-bottom:4px;">第 ' + c + ' コート</div><div class="alert-block" style="background:#eef5fe; border-color:#c6dcfb; color:#1a73e8;">組合せの固定化を防止するため、次の試合までコートを一旦空けます。<br>他コート終了後に全メンバーで再振り分けを行います。</div></div>';
                 } else {
-                    box.innerHTML = '<div style="width:100%;"><div style="font-size:12px; font-weight:bold; color:#aaa; margin-bottom:4px;">第 ' + c + ' コート</div><div style="color:#aaa; font-style:italic;">待機中</div></div>';
+                    box.style = 'border-left:6px solid #ccc; padding:10px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;';
+                    box.innerHTML = '<div style="width:100%;"><div style="font-size:12px; font-weight:bold; color:#aaa; margin-bottom:4px;">第 ' + c + ' コート</div><div style="color:#aaa; font-style:italic;">（コート未使用）</div></div>';
                 }
                 courtsContainer.appendChild(box);
             }
 
-            // ② 次の試合予定（予報）の更新
             var nextContainer = document.getElementById('l-next-matches');
             var available = getAvailablePlayersForCourt();
             
             if (available.length >= 4) {
-                var nextMatch = calculateNextCandidate(available, 1, false, false);
+                var nextMatch = calculateNextCandidate(available, 1);
                 if (nextMatch) {
-                    var duplicateNote = isAlreadyPlayedFour(nextMatch.players) ? ' <span style="color:var(--warning); font-size:11px;">(※重複検知予定)</span>' : '';
-                    nextContainer.innerHTML = '<strong>次の対戦候補:</strong> ' + nextMatch.p1 + '番 & ' + nextMatch.p2 + '番 <span style="color:#888;">vs</span> ' + nextMatch.p3 + '番 & ' + nextMatch.p4 + '番' + duplicateNote;
+                    nextContainer.innerHTML = '<strong>次の対戦候補:</strong> ' + nextMatch.p1 + '番 & ' + nextMatch.p2 + '番 <span style="color:#888;">vs</span> ' + nextMatch.p3 + '番 & ' + nextMatch.p4 + '番';
                 } else {
                     nextContainer.innerText = "コート待機中の人数が不足しています。";
                 }
@@ -479,13 +490,11 @@
                 nextContainer.innerText = "現在ベンチ待機中の人数: " + available.length + "人（他コートの終了待ち）";
             }
 
-            // ③ 現在ベンチでお休みしているメンバー
             available.sort(function(a, b) { return a - b; });
             var restsText = "";
             for (var r = 0; r < available.length; r++) { restsText += available[r] + "番" + (r < available.length - 1 ? ", " : ""); }
             document.getElementById('txt-rest').innerText = restsText ? restsText : "なし（全員プレイ中）";
 
-            // ④ メンバー一覧
             var memList = document.getElementById('l-member');
             memList.innerHTML = '';
             var firstRoundDone = isFirstRoundCompleted();
@@ -506,7 +515,6 @@
                 memList.appendChild(row);
             }
 
-            // ⑤ 過去履歴
             if (pastMatches.length > 0) {
                 document.getElementById('c-hist').style.display = 'block';
                 var histList = document.getElementById('l-hist');
@@ -519,15 +527,6 @@
                     histList.appendChild(rowH);
                 }
             } else { document.getElementById('c-hist').style.display = 'none'; }
-        }
-
-        function secureShuffle(array) { 
-            var copy = array.slice(); 
-            for (var i = copy.length - 1; i > 0; i--) { 
-                var j = Math.floor(Math.random() * (i + 1)), temp = copy[i]; 
-                copy[i] = copy[j]; copy[j] = temp; 
-            } 
-            return copy; 
         }
     </script>
 </body>
