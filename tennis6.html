@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-    <title>テニス乱数表 1面完全シャッフルレジウム</title>
+    <title>テニス乱数表 1面完全シャッフルレジウム (予告版)</title>
     <style>
         :root { --primary:#2bc44a; --secondary:#1a73e8; --warning:#e67e22; --danger:#e74c3c; }
         * { box-sizing:border-box; margin:0; padding:0; font-family:-apple-system,sans-serif; }
@@ -22,6 +22,7 @@
         .btn-main:disabled { background:#ccc; }
         .btn-action { border:none; background:none; font-weight:bold; font-size:14px; cursor:pointer; }
         .txt-yellow { color:#d35400; font-weight:bold; margin-right:10px; background:rgba(230,126,34,0.1); padding:2px 6px; border-radius:4px; font-size:12px; }
+        .card-next { border-left:6px solid #3498db; background:#f0f8ff; }
     </style>
 </head>
 <body>
@@ -48,6 +49,17 @@
                 <div style="color:var(--primary); font-weight:bold; margin-bottom:10px;">第 1 コート</div>
                 <div style="display:flex; justify-content:space-between; align-items:center;"><div id="t1" class="team"></div><div style="color:#888; font-weight:bold;">vs</div><div id="t2" class="team"></div></div>
             </div>
+
+            <!-- ⏭️ 次の試合予定（予告）枠 -->
+            <div id="c-next-preview" class="card card-next" style="display:none;">
+                <div class="title" style="color:#2980b9;">⏭️ 次の試合予定（予告）</div>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div id="nt1" class="team" style="color:#555;"></div>
+                    <div style="color:#aaa; font-weight:bold;">vs</div>
+                    <div id="nt2" class="team" style="color:#555;"></div>
+                </div>
+            </div>
+
             <div id="c-rest" class="card" style="display:none;"><div class="title">今回のお休み</div><div id="txt-rest" style="font-size:16px; font-weight:bold; color:var(--warning);"></div></div>
             <div class="card"><div class="title">メンバー一覧（黄＝実試合数/灰＝計算用）</div><div id="l-member"></div></div>
             <div id="c-hist" class="card" style="display:none;"><div class="title">過去の対戦履歴</div><div id="l-hist" style="max-height:180px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;"></div></div>
@@ -61,15 +73,17 @@
         var initCount = 6, currentMembers = [], nextNum = 1, totalMatches = 0, currentMatch = null, restingPlayers = [], newlyArrived = new Set(), playCounts = {}, pastMatches = [], pairHistory = [], stateHistory = [];
         var breakMembers = new Set(), realPlayCounts = {};
         var serialPlayCounts = {};
+        var nextPredictedMatch = null; // 次の予告カード保持用
 
         function saveState() {
-            stateHistory.push({ currentMembers:currentMembers.slice(), nextNum:nextNum, totalMatches:totalMatches, currentMatch:currentMatch ? Object.assign({}, currentMatch) : null, restingPlayers:restingPlayers.slice(), newlyArrived:new Set(newlyArrived), playCounts:Object.assign({}, playCounts), pastMatches:JSON.parse(JSON.stringify(pastMatches)), pairHistory:JSON.parse(JSON.stringify(pairHistory)), serialPlayCounts:Object.assign({}, serialPlayCounts), breakMembers:new Set(breakMembers), realPlayCounts:Object.assign({}, realPlayCounts) });
+            stateHistory.push({ currentMembers:currentMembers.slice(), nextNum:nextNum, totalMatches:totalMatches, currentMatch:currentMatch ? Object.assign({}, currentMatch) : null, restingPlayers:restingPlayers.slice(), newlyArrived:new Set(newlyArrived), playCounts:Object.assign({}, playCounts), pastMatches:JSON.parse(JSON.stringify(pastMatches)), pairHistory:JSON.parse(JSON.stringify(pairHistory)), serialPlayCounts:Object.assign({}, serialPlayCounts), breakMembers:new Set(breakMembers), realPlayCounts:Object.assign({}, realPlayCounts), nextPredictedMatch:nextPredictedMatch ? Object.assign({}, nextPredictedMatch) : null });
             if (stateHistory.length > 5) { stateHistory.shift(); }
         }
         function undoAction() {
             if (stateHistory.length === 0) return; var p = stateHistory.pop();
-            currentMembers = p.currentMembers; nextNum = p.nextNum; totalMatches = p.totalMatches; currentMatch = p.currentMatch; restingPlayers = p.restingPlayers; newlyArrived = p.newlyArrived; playCounts = p.playCounts; pastMatches = p.pastMatches; pairHistory = p.pairHistory; serialPlayCounts = p.serialPlayCounts; breakMembers = p.breakMembers; realPlayCounts = p.realPlayCounts;
+            currentMembers = p.currentMembers; nextNum = p.nextNum; totalMatches = p.totalMatches; currentMatch = p.currentMatch; restingPlayers = p.restingPlayers; newlyArrived = p.newlyArrived; playCounts = p.playCounts; pastMatches = p.pastMatches; pairHistory = p.pairHistory; serialPlayCounts = p.serialPlayCounts; breakMembers = p.breakMembers; realPlayCounts = p.realPlayCounts; nextPredictedMatch = p.nextPredictedMatch;
             updateUI();
+            persistState();
         }
         function addNum(amt) { var n = initCount + amt; if (n >= 4 && n <= 40) { initCount = n; document.getElementById('txt-init').innerText = initCount; } }
         
@@ -89,6 +103,7 @@
             breakMembers = new Set();
             realPlayCounts = {};
             serialPlayCounts = {};
+            nextPredictedMatch = null;
 
             for (var i = 1; i <= initCount; i++) {
                 currentMembers.push(i);
@@ -100,6 +115,10 @@
             nextNum = initCount + 1;
             document.getElementById('v-setup').style.display = 'none';
             document.getElementById('v-main').style.display = 'block';
+
+            // 初期状態で第1試合の予告を生成
+            nextPredictedMatch = computeNextMatch();
+
             updateUI();
             persistState();
         }
@@ -115,9 +134,24 @@
                 counts.push(playCounts[activeMembers[i]] || 0);
             }
             var minC = counts.length > 0 ? Math.min.apply(null, counts) : 0;
-            playCounts[nextNum] = minC; realPlayCounts[nextNum] = 0; serialPlayCounts[nextNum] = 0; currentMembers.push(nextNum); newlyArrived.add(nextNum); nextNum += 1; updateUI(); persistState();
+            playCounts[nextNum] = minC; realPlayCounts[nextNum] = 0; serialPlayCounts[nextNum] = 0; currentMembers.push(nextNum); newlyArrived.add(nextNum); nextNum += 1;
+            
+            // 増員に伴い予告を更新
+            nextPredictedMatch = computeNextMatch();
+
+            updateUI(); persistState();
         }
-        function onLeave(id) { saveState(); newlyArrived.delete(id); breakMembers.delete(id); delete serialPlayCounts[id]; delete realPlayCounts[id]; var updated = []; for (var i = 0; i < currentMembers.length; i++) { if (currentMembers[i] !== id) { updated.push(currentMembers[i]); } } currentMembers = updated; updateUI(); persistState(); }
+
+        function onLeave(id) {
+            saveState();
+            newlyArrived.delete(id); breakMembers.delete(id); delete serialPlayCounts[id]; delete realPlayCounts[id];
+            var updated = [];
+            for (var i = 0; i < currentMembers.length; i++) { if (currentMembers[i] !== id) { updated.push(currentMembers[i]); } }
+            currentMembers = updated;
+
+            nextPredictedMatch = computeNextMatch();
+            updateUI(); persistState();
+        }
         
         function toggleBreak(id) {
             saveState(); var targetId = Number(id);
@@ -131,7 +165,8 @@
                 breakMembers.add(targetId); newlyArrived.delete(targetId);
                 if (currentMatch && (currentMatch.p1 === targetId || currentMatch.p2 === targetId || currentMatch.p3 === targetId || currentMatch.p4 === targetId)) { currentMatch = null; restingPlayers = []; }
             }
-            updateUI();
+            nextPredictedMatch = computeNextMatch();
+            updateUI(); persistState();
         }
 
         function updateUI() {
@@ -154,17 +189,30 @@
                 row.innerHTML = '<div>👤 ' + m + '番 ' + tag + '</div><div style="display:flex; align-items:center; gap:6px;"><span class="txt-yellow">実' + realCount + '回</span><span style="font-size:13px; color:#666; margin-right:4px;">' + count + '回</span><button class="btn-action" onclick="toggleBreak(' + m + ')" style="color:var(--warning);">' + breakText + '</button><button class="btn-action" onclick="onLeave(' + m + ')" style="color:var(--danger);">削除</button></div>';
                 memList.appendChild(row);
             }
+
+            // 現在の対戦カード表示
             if (currentMatch) {
                 document.getElementById('c-match').style.display = 'block'; document.getElementById('txt-match-num').innerText = "現在の対戦カード (第 " + currentMatch.matchNumber + " 試合)"; document.getElementById('t1').innerText = currentMatch.p1 + "番 & " + currentMatch.p2 + "番"; document.getElementById('t2').innerText = currentMatch.p3 + "番 & " + currentMatch.p4 + "番";
                 var validRests = []; for (var j = 0; j < restingPlayers.length; j++) { if (currentMembers.indexOf(restingPlayers[j]) !== -1 && !breakMembers.has(restingPlayers[j])) { validRests.push(restingPlayers[j]); } }
                 validRests.sort(function(a, b) { return a - b; }); var restsText = ""; for (var k = 0; k < validRests.length; k++) { restsText += validRests[k] + "番" + (k < validRests.length - 1 ? ", " : ""); }
                 document.getElementById('c-rest').style.display = restsText ? 'block' : 'none'; document.getElementById('txt-rest').innerText = restsText;
             } else { document.getElementById('c-match').style.display = 'none'; document.getElementById('c-rest').style.display = 'none'; }
+
+            // 次の試合予定（予告）枠の表示
+            if (nextPredictedMatch) {
+                document.getElementById('c-next-preview').style.display = 'block';
+                document.getElementById('nt1').innerText = nextPredictedMatch.p1 + "番 & " + nextPredictedMatch.p2 + "番";
+                document.getElementById('nt2').innerText = nextPredictedMatch.p3 + "番 & " + nextPredictedMatch.p4 + "番";
+            } else {
+                document.getElementById('c-next-preview').style.display = 'none';
+            }
+
             if (pastMatches.length > 0) {
                 document.getElementById('c-hist').style.display = 'block'; var histList = document.getElementById('l-hist'); histList.innerHTML = '';
                 for (var hIdx = pastMatches.length - 1; hIdx >= 0; hIdx--) { var h = pastMatches[hIdx], rowH = document.createElement('div'); rowH.style = 'padding:6px; background:#f8f9fa; border-left:4px solid var(--secondary); border-radius:0 6px 6px 0; font-size:13px;'; rowH.innerHTML = '<div style="font-weight:bold; color:var(--secondary);">第 ' + h.matchNumber + ' 試合</div><div>' + h.p1 + '番-' + h.p2 + '番 vs ' + h.p3 + '番-' + h.p4 + '番</div>'; histList.appendChild(rowH); }
             } else { document.getElementById('c-hist').style.display = 'none'; }
         }
+
         function secureShuffle(array) { var copy = array.slice(); for (var i = copy.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), temp = copy[i]; copy[i] = copy[j]; copy[j] = temp; } return copy; }
         function getPairCount(p1, p2) { var count = 0; for (var i = 0; i < pairHistory.length; i++) { var h = pairHistory[i]; if ((h.concat().shift()===p1&&h.concat().pop()===p2)||(h.concat().shift()===p2&&h.concat().pop()===p1)) { count++; } } return count; }
 
@@ -185,7 +233,8 @@
                     pairHistory: JSON.parse(JSON.stringify(pairHistory)),
                     breakMembers: Array.from(breakMembers),
                     realPlayCounts: Object.assign({}, realPlayCounts),
-                    serialPlayCounts: Object.assign({}, serialPlayCounts)
+                    serialPlayCounts: Object.assign({}, serialPlayCounts),
+                    nextPredictedMatch: nextPredictedMatch ? Object.assign({}, nextPredictedMatch) : null
                 };
                 localStorage.setItem(PERSIST_KEY, JSON.stringify(data));
             } catch (e) {}
@@ -222,6 +271,7 @@
                 breakMembers = new Set(Array.isArray(p.breakMembers) ? p.breakMembers : []);
                 realPlayCounts = p.realPlayCounts || {};
                 serialPlayCounts = p.serialPlayCounts || {};
+                nextPredictedMatch = p.nextPredictedMatch || null;
 
                 document.getElementById('txt-init').innerText = initCount;
                 document.getElementById('v-setup').style.display = 'none';
@@ -256,28 +306,18 @@
             }, 0);
         });
 
-        function drawMatch() {
-            var activeMembers = currentMembers.filter(function(m) { return !breakMembers.has(m); });
-            if (activeMembers.length < 4) return;
-            saveState(); totalMatches += 1; var finalMatch = null;
-            
+        // 💡 4名を選出してペアリングを組む核心ロジック関数
+        function selectMatchCards(activeMembers) {
             var zeroMatchPlayers = activeMembers.filter(function(m) { return (playCounts[m] || 0) === 0; });
             var is4Multiple = (activeMembers.length % 4 === 0);
+            var selected = [];
 
-            // 💡 【修正点】まだ1回も出ていない稼働中メンバーが4人以上いる間は、背番号順に王道固定（中座・遅参に左右されない）
+            // まだ1回も出ていない稼働中メンバーが4人以上いる間は、背番号順に王道固定
             if (zeroMatchPlayers.length >= 4) {
                 var sortedZeroPlayers = zeroMatchPlayers.slice().sort(function(a, b) { return a - b; });
-                var p1 = sortedZeroPlayers[0];
-                var p2 = sortedZeroPlayers[1];
-                var p3 = sortedZeroPlayers[2];
-                var p4 = sortedZeroPlayers[3];
-                finalMatch = { matchNumber: totalMatches, p1: p1, p2: p2, p3: p3, p4: p4 };
-                newlyArrived.delete(p1); newlyArrived.delete(p2); newlyArrived.delete(p3); newlyArrived.delete(p4);
+                selected = sortedZeroPlayers.slice(0, 4);
             } else {
-                var selected = [];
-
                 if (is4Multiple) {
-                    // 🔥 【4の倍数専用シャッフルモード】
                     var maxAttempts = 500;
                     var success = false;
 
@@ -286,7 +326,13 @@
                         if (activeMembers.length === 4) {
                             pool = activeMembers.slice();
                         } else if (activeMembers.length === 8) {
-                            pool = secureShuffle(activeMembers);
+                            // 💡 8人の固定化打破：お休み組3人＋前回組1人などの混ざりを意識したランダムプールを作成
+                            var benched = activeMembers.filter(function(m) { return restingPlayers.indexOf(m) !== -1; });
+                            var playedLast = activeMembers.filter(function(m) { return restingPlayers.indexOf(m) === -1; });
+                            var shuffledB = secureShuffle(benched);
+                            var shuffledP = secureShuffle(playedLast);
+                            pool = shuffledB.slice(0, 3).concat(shuffledP.slice(0, 1)).concat(shuffledB.slice(3)).concat(shuffledP.slice(1));
+                            pool = secureShuffle(pool);
                         } else {
                             var lastPlayed = new Set(restingPlayers.length > 0 ? currentMembers.filter(function(m) { return restingPlayers.indexOf(m) === -1 && !breakMembers.has(m); }) : []);
                             var benched = activeMembers.filter(function(m) { return !lastPlayed.has(m); });
@@ -294,7 +340,6 @@
                         }
 
                         var currentSelected = [];
-                        // 修正：全員が一巡済みの場面でのみ遅参者を優先選出
                         var arrivals = activeMembers.filter(function(m) { return newlyArrived.has(m); });
                         for (var aI = 0; aI < arrivals.length; aI++) {
                             if (currentSelected.length < 4) {
@@ -344,7 +389,6 @@
                     }
 
                 } else {
-                    // 🍃 【4の倍数以外のとき】
                     var candidates = secureShuffle(activeMembers).sort(function(a, b) {
                         var hasZeroMatch = activeMembers.some(function(m) { return (playCounts[m] || 0) === 0; });
                         if (hasZeroMatch) {
@@ -362,18 +406,58 @@
                     for (var i = 0; i < rawArrivals.length; i++) { if (selected.length < 4) { selected.push(rawArrivals[i]); candidates = candidates.filter(function(c) { return c !== rawArrivals[i]; }); } }
                     while (selected.length < 4 && candidates.length > 0) { selected.push(candidates.shift()); }
                 }
-                
-                newlyArrived.clear();
-                var cp1 = selected[0] || 0, cp2 = selected[1] || 0, cp3 = selected[2] || 0, cp4 = selected[3] || 0;
-                var patterns = [
-                    { p1: cp1, p2: cp2, p3: cp3, p4: cp4, score: getPairCount(cp1, cp2) + getPairCount(cp3, cp4) },
-                    { p1: cp1, p2: cp3, p3: cp2, p4: cp4, score: getPairCount(cp1, cp3) + getPairCount(cp2, cp4) },
-                    { p1: cp1, p2: cp4, p3: cp2, p4: cp3, score: getPairCount(cp1, cp4) + getPairCount(cp2, cp3) }
-                ];
-                patterns.sort(function(a, b) { return a.score - b.score; });
-                var bestMatch = patterns.shift();
-                finalMatch = { matchNumber: totalMatches, p1: bestMatch.p1, p2: bestMatch.p2, p3: bestMatch.p3, p4: bestMatch.p4 };
             }
+
+            var cp1 = selected[0] || 0, cp2 = selected[1] || 0, cp3 = selected[2] || 0, cp4 = selected[3] || 0;
+            var patterns = [
+                { p1: cp1, p2: cp2, p3: cp3, p4: cp4, score: getPairCount(cp1, cp2) + getPairCount(cp3, cp4) },
+                { p1: cp1, p2: cp3, p3: cp2, p4: cp4, score: getPairCount(cp1, cp3) + getPairCount(cp2, cp4) },
+                { p1: cp1, p2: cp4, p3: cp2, p4: cp3, score: getPairCount(cp1, cp4) + getPairCount(cp2, cp3) }
+            ];
+            patterns.sort(function(a, b) { return a.score - b.score; });
+            var bestMatch = patterns.shift();
+            return { p1: bestMatch.p1, p2: bestMatch.p2, p3: bestMatch.p3, p4: bestMatch.p4 };
+        }
+
+        // 💡 次回の試合カード（予告）を算出する関数
+        function computeNextMatch() {
+            var activeMembers = currentMembers.filter(function(m) { return !breakMembers.has(m); });
+            if (activeMembers.length < 4) return null;
+            return selectMatchCards(activeMembers);
+        }
+
+        // 💡 試合確定関数（予告表示中のカードをそのまま確定適用）
+        function drawMatch() {
+            var activeMembers = currentMembers.filter(function(m) { return !breakMembers.has(m); });
+            if (activeMembers.length < 4) return;
+            saveState(); totalMatches += 1; var finalMatch = null;
+
+            // 予告カードが存在すればそれを100%確定適用（不一致を防止）
+            if (nextPredictedMatch) {
+                finalMatch = {
+                    matchNumber: totalMatches,
+                    p1: nextPredictedMatch.p1,
+                    p2: nextPredictedMatch.p2,
+                    p3: nextPredictedMatch.p3,
+                    p4: nextPredictedMatch.p4
+                };
+            } else {
+                var generated = selectMatchCards(activeMembers);
+                finalMatch = {
+                    matchNumber: totalMatches,
+                    p1: generated.p1,
+                    p2: generated.p2,
+                    p3: generated.p3,
+                    p4: generated.p4
+                };
+            }
+
+            // 確定したプレイヤーの遅参タグを解除
+            newlyArrived.delete(finalMatch.p1);
+            newlyArrived.delete(finalMatch.p2);
+            newlyArrived.delete(finalMatch.p3);
+            newlyArrived.delete(finalMatch.p4);
+
             currentMatch = finalMatch; pastMatches.push(finalMatch);
 
             playCounts[finalMatch.p1] = (playCounts[finalMatch.p1] || 0) + 1;
@@ -397,6 +481,10 @@
 
             pairHistory.push([finalMatch.p1, finalMatch.p2]); pairHistory.push([finalMatch.p3, finalMatch.p4]);
             var active = [finalMatch.p1, finalMatch.p2, finalMatch.p3, finalMatch.p4], rests = []; for (var mIdx = 0; mIdx < currentMembers.length; mIdx++) { if (active.indexOf(currentMembers[mIdx]) === -1) { rests.push(currentMembers[mIdx]); } } restingPlayers = rests;
+
+            // 確定後に次の試合（第n+1試合）の予告を新たに計算
+            nextPredictedMatch = computeNextMatch();
+
             updateUI(); persistState(); window.scrollTo({ top: 0, behavior: 'smooth' });
         }
     </script>
